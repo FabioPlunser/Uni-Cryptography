@@ -33,7 +33,7 @@ class Encryptor:
             return
 
         # Generate key, iv, and salt
-        key, iv, salt = self.__generate_key(pwd)
+        key, iv, salt = self.__generate_key(pwd, os.urandom(16), os.urandom(16))
 
         # Pass all three to encrypt_file
         self.__encrypt_file(zip_file_path, key, iv, salt)
@@ -91,17 +91,18 @@ class Encryptor:
             logger.error(f"Error creating ZIP archive: {e}")
             return None
 
-    def __generate_key(self, pwd: str) -> tuple[bytes, bytes, bytes]:
+    def __generate_key(
+        self, pwd: str, salt: bytes, iv: bytes
+    ) -> tuple[bytes, bytes, bytes]:
         """Generates a key, IV, and salt from a password using PBKDF2."""
-        salt = os.urandom(16)
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
-            length=16,  # 16 bytes for AES-128
+            length=32,
             salt=salt,
-            iterations=100000,  # Higher is more secure but slower
+            iterations=100000,
         )
+
         key = kdf.derive(pwd.encode())
-        iv = os.urandom(16)
 
         return key, iv, salt
 
@@ -131,19 +132,12 @@ class Encryptor:
         try:
             with open(file_path, "rb") as f:
                 data = f.read()
-                # Extract salt and IV from the beginning of the file
-                salt = data[:16]  # First 16 bytes are the salt
-                iv = data[16:32]  # Next 16 bytes are the IV
-                encrypted_data = data[32:]  # The rest is the encrypted data
 
-                # Derive the key using the same method as in encryption
-                kdf = PBKDF2HMAC(
-                    algorithm=hashes.SHA256(),
-                    length=16,  # 16 bytes for AES-128
-                    salt=salt,
-                    iterations=100000,
-                )
-                key = kdf.derive(pwd.encode())
+                salt = data[:16]
+                iv = data[16:32]
+                encrypted_data = data[32:]
+
+                key, _, _ = self.__generate_key(pwd, salt, iv)
 
                 cipher = Cipher(AES(key), modes.CBC(iv))
                 decryptor = cipher.decryptor()
