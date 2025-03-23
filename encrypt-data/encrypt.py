@@ -38,13 +38,22 @@ class Encryptor:
         # Pass all three to encrypt_file
         self.__encrypt_file(zip_file_path, key, iv, salt)
 
-        print(f"dell orig: {delete_original}")
         if delete_original:
             shutil.rmtree(folder_path)
 
         return
 
     def decrypt_and_uncompress(self, file_path: str, pwd: str):
+        parent_dir = os.path.dirname(file_path)
+        base_name  = os.path.basename(file_path)
+
+        # when unzipping, the original parent dir was not included.
+        # workaround by creating a new folder with the same name as the original
+        folder_name= base_name.replace(".enc", "").replace(".zip", "")
+        parent_folder_path = os.path.join(parent_dir, folder_name)
+        os.makedirs(parent_folder_path, exist_ok=True)
+
+
         # Use the new decrypt_file method that takes just the file_path and pwd
         decrypted_file_path = self.__decrypt_file(file_path, pwd)
 
@@ -53,10 +62,12 @@ class Encryptor:
             return
 
         try:
+
             with zipfile.ZipFile(decrypted_file_path, "r") as zipf:
-                zipf.extractall(os.path.dirname(decrypted_file_path))
+                zipf.extractall(parent_folder_path)
 
             os.remove(decrypted_file_path)
+
         except Exception as e:
             logger.error(f"Error extracting ZIP archive: {e}")
 
