@@ -14,6 +14,8 @@ python3 src/main.py
 ```
 Then the cli tool will prompt you for the necessary input.
 
+For testing purposes there is a test dir (`res/testdir`).
+
 
 **Example input**:
 

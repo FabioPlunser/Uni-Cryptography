@@ -19,6 +19,8 @@ def main():
             file_path=config.path,
             pwd=config.key
         )
+        
+    print("Done!")
 
 
 if __name__ == '__main__':

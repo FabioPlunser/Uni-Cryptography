@@ -1,4 +1,5 @@
 import os
+import getpass
 from config import *
 
 class CLIManager:
@@ -18,7 +19,7 @@ class CLIManager:
         valid = False
         while not valid:
             print("Encrypt(1) or Decrypt(2)?")
-            choice = input().strip()
+            choice = input(">> ").strip()
             if choice == "1":
                 running_conf.encrypt = True
                 valid = True
@@ -35,7 +36,7 @@ class CLIManager:
         valid = False
         while not valid:
             print("Enter the path of the file to encrypt/decrypt")
-            path = input().strip()
+            path = input(">> ").strip()
             if path == "help":
                 self.handle_help()
             elif path == "exit":
@@ -49,7 +50,7 @@ class CLIManager:
         valid = False
         while not valid and running_conf.encrypt:
             print("Do you want to keep the folder (1) or delete it (2)?")
-            folder_choice = input().strip()
+            folder_choice = input(">> ").strip()
             if folder_choice == "1":
                 running_conf.keep_folder = True
                 valid = True
@@ -66,7 +67,7 @@ class CLIManager:
         valid = False
         while not valid:
             print(f"Enter the key of length {KEY_LEN} ")
-            key = input().strip()
+            key = getpass.getpass(">> ").strip()
             if key == "help":
                 self.handle_help()
             elif key == "exit":
