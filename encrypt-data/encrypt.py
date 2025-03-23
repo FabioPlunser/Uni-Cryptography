@@ -38,6 +38,7 @@ class Encryptor:
         # Pass all three to encrypt_file
         self.__encrypt_file(zip_file_path, key, iv, salt)
 
+        print(f"dell orig: {delete_original}")
         if delete_original:
             shutil.rmtree(folder_path)
 
