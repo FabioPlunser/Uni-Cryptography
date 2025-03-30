@@ -14,8 +14,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(name)s: %(asctime)s [%(levelname)s] [%(funcName)s] %(message)s",
     handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("encrypt.log"),
+        #logging.StreamHandler(),
+        #logging.FileHandler("encrypt.log"),
     ],
 )
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ class Encryptor:
                 padded_data = self.__pad(data)
                 encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
 
-            # Write salt and IV at the beginning of the file
+            # Write salt and IV at the beginning of the file, first bytes
             with open(encrypted_file_path, "wb") as file:
                 file.write(salt + iv + encrypted_data)
 
