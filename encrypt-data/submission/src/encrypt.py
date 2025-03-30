@@ -43,33 +43,33 @@ class Encryptor:
 
         return
 
-    def decrypt_and_uncompress(self, file_path: str, pwd: str):
-        parent_dir = os.path.dirname(file_path)
-        base_name  = os.path.basename(file_path)
-
-        # when unzipping, the original parent dir was not included.
-        # workaround by creating a new folder with the same name as the original
-        folder_name= base_name.replace(".enc", "").replace(".zip", "")
-        parent_folder_path = os.path.join(parent_dir, folder_name)
-        os.makedirs(parent_folder_path, exist_ok=True)
-
-
-        # Use the new decrypt_file method that takes just the file_path and pwd
-        decrypted_file_path = self.__decrypt_file(file_path, pwd)
-
-        if not decrypted_file_path:
-            logger.error("Decryption failed. Cannot extract files.")
-            return
-
+    def decrypt_and_uncompress(self, file_path: str, pwd: str) -> bool:
         try:
+            # Use the new decrypt_file method that takes just the file_path and pwd
+            decrypted_file_path = self.__decrypt_file(file_path, pwd)
 
+            if not decrypted_file_path:
+                # logger.error("Decryption failed. Cannot extract files.")
+                return False
+
+            parent_dir = os.path.dirname(file_path)
+            base_name  = os.path.basename(file_path)
+
+            # when unzipping, the original parent dir was not included.
+            # workaround by creating a new folder with the same name as the original
+            folder_name= base_name.replace(".enc", "").replace(".zip", "")
+            parent_folder_path = os.path.join(parent_dir, folder_name)
+            os.makedirs(parent_folder_path, exist_ok=True)
+            
             with zipfile.ZipFile(decrypted_file_path, "r") as zipf:
                 zipf.extractall(parent_folder_path)
 
             os.remove(decrypted_file_path)
+            return True
 
-        except Exception as e:
-            logger.error(f"Error extracting ZIP archive: {e}")
+        except Exception:
+            # logger.error("Decryption operation failed")
+            return False
 
     def __pad(self, data: bytes) -> bytes:
         """Pads the data using PKCS7 padding."""
@@ -99,8 +99,8 @@ class Encryptor:
                         )
             logger.info(f"Created ZIP archive at {zip_file_path}")
             return str(zip_file_path)
-        except Exception as e:
-            logger.error(f"Error creating ZIP archive: {e}")
+        except Exception:
+            logger.error("Error creating ZIP archive")
             return None
 
     def __generate_key(
@@ -135,8 +135,8 @@ class Encryptor:
             os.remove(file_path)
             logger.info(f"Encrypted file saved at {encrypted_file_path}")
             return encrypted_file_path
-        except Exception as e:
-            logger.error(f"Error encrypting file: {e}")
+        except Exception:
+            logger.error("Error encrypting file")
             return None
 
     def __decrypt_file(self, file_path: str, pwd: str) -> str:
@@ -164,5 +164,4 @@ class Encryptor:
             logger.info(f"Decrypted file saved at {decrypted_zip_path}")
             return decrypted_zip_path
         except Exception as e:
-            logger.error(f"Error decrypting file: {e}")
-            return None
+            raise e

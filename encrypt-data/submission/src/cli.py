@@ -66,17 +66,18 @@ class CLIManager:
                 
         valid = False
         while not valid:
-            print(f"Enter the key of length {KEY_LEN} ")
-            key = getpass.getpass(">> ").strip()
+            print(f"Enter the key")
+            try:
+                key = getpass.getpass(">> ").strip()
+            except ValueError:
+                print("Invalid key, please try again")
             if key == "help":
                 self.handle_help()
             elif key == "exit":
                 exit()
-            if len(key) == KEY_LEN:
-                running_conf.key = key
-                valid = True
-            else:
-                print("Invalid key, please try again")
+        
+            running_conf.key = key
+            valid = True
             
         return running_conf
          

@@ -32,7 +32,7 @@ Enter the path of the file to encrypt/decrypt
 res/testdir
 Do you want to keep the folder (1) or delete it (2)?
 >>1
-Enter the key of length 16
+Enter the key
 >>****************
 ```
 

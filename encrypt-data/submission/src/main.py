@@ -5,6 +5,8 @@ def main():
     cli = CLIManager()
     config: Config = cli.get_information()
     enc = Encryptor()
+    
+    result = True
 
     # we want to encrypt
     if config.encrypt:
@@ -15,12 +17,15 @@ def main():
         )
 
     else:
-        enc.decrypt_and_uncompress(
+        result =enc.decrypt_and_uncompress(
             file_path=config.path,
             pwd=config.key
         )
-        
-    print("Done!")
+    
+    if result:
+        print("Done!")
+    else: 
+        print("Failed to decrypt the file, please check the key and try again.")
 
 
 if __name__ == '__main__':
