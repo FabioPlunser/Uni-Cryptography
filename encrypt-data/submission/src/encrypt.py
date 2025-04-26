@@ -1,6 +1,5 @@
 import os
 import zipfile
-import hashlib
 import logging
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers import modes, Cipher
@@ -13,10 +12,6 @@ from pathlib import Path
 logging.basicConfig(
     level=logging.INFO,
     format="%(name)s: %(asctime)s [%(levelname)s] [%(funcName)s] %(message)s",
-    handlers=[
-        #logging.StreamHandler(),
-        #logging.FileHandler("encrypt.log"),
-    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -53,14 +48,14 @@ class Encryptor:
                 return False
 
             parent_dir = os.path.dirname(file_path)
-            base_name  = os.path.basename(file_path)
+            base_name = os.path.basename(file_path)
 
             # when unzipping, the original parent dir was not included.
             # workaround by creating a new folder with the same name as the original
-            folder_name= base_name.replace(".enc", "").replace(".zip", "")
+            folder_name = base_name.replace(".enc", "").replace(".zip", "")
             parent_folder_path = os.path.join(parent_dir, folder_name)
             os.makedirs(parent_folder_path, exist_ok=True)
-            
+
             with zipfile.ZipFile(decrypted_file_path, "r") as zipf:
                 zipf.extractall(parent_folder_path)
 
