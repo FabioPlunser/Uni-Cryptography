@@ -1,6 +1,6 @@
 ---
 marp: true
-class: invert
+class: 
 ---
 
 # Encrypting and Decrypting Folders
@@ -64,8 +64,10 @@ encrypted_data = data[32:]
 ---
 
 ## How PBKDF2 Works
-![txt](image.png)
-
+<!-- ![txt](image.png) -->
+<figure>
+<img src="./image.png" width=800 >
+</figure>
 
 
 <!-- 1. Combines password with salt
