@@ -8,7 +8,7 @@ import base64
 import haslib
 import logging
 
-from chat_app import ChatInterface
+from chat_app_interface import ChatInterface
 import db_utils
 import crypto_utils
 
@@ -24,6 +24,8 @@ logging.basicConfig(
 
 
 # --- Global Variables ---
+user_message_queues = {}
+user_message_queues_lock = threading.Lock()
 active_channels = {}
 active_channels_lock = threading.Lock()
 
@@ -71,34 +73,84 @@ class Server(paramiko.ServerInterface):
         # Clients like OpenSSH request a PTY, approve it
         return True
 
-# Client Handling Lgic 
-def handle_client(client_socket, client_address, db_conn, host_key): 
-  """Handles a single client connection."""
-  logging.info(f"Accepted connection from {client_address}")
-  try: 
-    transport = paramiko.Transport(client_socket)
-    transport.add_server_key(host_key)
-    transport.local_version = "SSH-2.0-MurmlyChatServer1.0" # Optional Identifier
-    
-    server_instance = Server(client_address, db_conn)
-    transport.start_server(server=server_instance)
-    
-    logging.info(f"Waiting for auth from {client_address}...")
 
-    auth_event_happened = server_instance.event.wait(10)
+# Client Handling Lgic
+def handle_client(client_socket, client_address, db_conn, host_key):
+    """Handles a single client connection."""
+    logging.info(f"Accepted connection from {client_address}")
+    try:
+        transport = paramiko.Transport(client_socket)
+        transport.add_server_key(host_key)
+        transport.local_version = "SSH-2.0-MurmlyChatServer1.0"  # Optional Identifier
 
-    if auth_event_happened and server_instance.username and server_instance.channel: 
-      username = server_instance.username
-      channel = server_instance.channel 
-      logging.info(f"User '{username}' authenticated successfully.")
-      
-      # Add user to active channels 
-      with active_channels_lock: 
-        if username not in active_channels: 
-          active_channels[username] = channel 
-          logging.info(f"User '{username}' added to active channels.")
-  except paramiko.SSHException as e:
-    logging.error(f"SSH error: {e}")
-  except Exception as e:
-    logging.error(f"Error handling client {client_address}: {e}")
-    
+        server_instance = Server(client_address, db_conn)
+        transport.start_server(server=server_instance)
+
+        logging.info(f"Waiting for auth from {client_address}...")
+
+        auth_event_happened = server_instance.event.wait(10)
+
+        if auth_event_happened and server_instance.username and server_instance.channel:
+            username = server_instance.username
+            channel = server_instance.channel
+            logging.info(f"User '{username}' authenticated successfully.")
+
+            # Add user to active channels
+            with active_channels_lock:
+                if username not in active_channels:
+                    active_channels[username] = channel
+                    logging.info(f"User '{username}' added to active channels.")
+    except paramiko.SSHException as e:
+        logging.error(f"SSH error: {e}")
+    except Exception as e:
+        logging.error(f"Error handling client {client_address}: {e}")
+
+
+async def main():
+    try:
+        host_key = paramiko.RSAKey(filename=HOST_KEY_FILE)
+        logging.info(f"Host key loaded from {HOST_KEY_FILE}")
+    except IOError:
+        logging.error(
+            f"Failed to load host key from {HOST_KEY_FILE}. Generating a new one."
+        )
+        host_key = paramiko.RSAKey.generate(2048)
+        host_key.write_private_key_file(HOST_KEY_FILE)
+        logging.info(f"Host key generated and saved to {HOST_KEY_FILE}")
+
+    # --- Database Initialization ---
+    db = db_utils.Database()
+    await db.init_db()
+    db.mark_all_users_as_offline()
+
+    # --- Start Server Socket ---
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        server_socket.bind((HOST, PORT))
+        server_socket.listen(5)
+        logging.info(f"Murmly server listening on {HOST}:{PORT}")
+    except Exception as e:
+        logging.error(f"Failed to bind or listen on {HOST}:{PORT}: {e}")
+        return
+
+    # --- Accept Connections Loop ---
+    try:
+        while True:
+            client_socket, client_address = server_socket.accept()
+            db = db_utils.Database()
+            client_thread = threading.Thread(
+                target=handle_client,
+                args=(client_socket, client_address, db, host_key),
+                daemon=True,
+            )
+            client_thread.start()
+    except KeyboardInterrupt:
+        logging.info("Shutting down server...")
+    finally:
+        logging.info("Closing server socket.")
+        server_socket.close()
+
+
+if __name__ == "__main__":
+    main()
