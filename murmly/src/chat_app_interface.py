@@ -31,6 +31,26 @@ class ChatInterface(App):
     # --- Reactive variables to update UI elements ---
     current_recipient = reactive(None)
 
+    def __init__(self, message_queue: asyncio.Queue, **kwargs):
+        super().__init__(**kwargs)
+        self._message_queue = message_queue  # Store the dedicated queue
+        # Injected by server.py after __init__
+        self.username = "Unknown"
+        self.db_conn = None
+        self.channel = None
+        self.get_online_users_func = lambda: []
+        self.send_message_func = None
+        self.start_e2ee_func = None
 
-async def send_message_handler(recipient_id: int, message_content: str):
-    """Handles sending a message to the recipient."""
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Container(id="main-container"):
+            with Vertical(id="chat-area"):
+                yield Log(
+                    id="chat-log", highlight=True, markup=True, auto_scroll=True
+                )  # Enable auto_scroll
+                yield Input(placeholder="Type a message or command (/help)", id="input")
+            with Vertical(id="sidebar"):
+                yield Static("Online Users:", id="online-users-header")
+                yield ListView(id="online-users-list")
+        yield Footer()
