@@ -14,7 +14,7 @@ HOST_KEY_FILE = "server_host_key.pem"
 
 # --- Logging Setup ---
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
 
@@ -71,10 +71,6 @@ def main():
                     client_address,
                     host_key,
                     db,
-                    active_channels,
-                    active_channels_lock,
-                    user_message_queues,
-                    user_message_queues_lock,
                 ),
                 daemon=True,
             )

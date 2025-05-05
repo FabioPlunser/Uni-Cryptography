@@ -1,0 +1,105 @@
+/* chat_interface.tcss */
+
+Screen {
+  background: #000000; /* Black background */
+}
+
+#root-container {
+  width: 100%;
+  height: 100%;
+  align: center middle; /* Crucial for centering */
+}
+
+/* Inner container: Fixed size, holds the actual UI */
+#app-frame {
+  width: 80%;
+  height: 80%;
+  background: $surface;
+  border: round $accent;
+
+  grid-size: 1 3; /* 1 column, 3 rows */
+  grid-rows: auto 1fr auto; /* Header auto, Main fills space, Footer auto */
+}
+
+/* Header and Footer are placed by the #app-frame grid */
+#app-frame > Header {
+  /* dock: top; (no longer needed, handled by grid row 1) */
+  height: auto; /* Keep */
+  width: 100%; /* Ensure it fills the width of app-frame */
+}
+
+#app-frame > Footer {
+  /* dock: bottom; (no longer needed, handled by grid row 3) */
+  height: auto; /* Keep */
+  width: 100%; /* Ensure it fills the width of app-frame */
+}
+
+/* Main horizontal layout within app-frame's middle grid cell */
+#app-frame > #main-container {
+  /* height: 1fr; (no longer needed, handled by grid row 2) */
+  width: 100%; /* Fill width of app-frame */
+  height: 100%; /* Fill height of its grid cell */
+  /* Keep your horizontal layout method (Horizontal widget handles this) */
+}
+
+/* Sidebar within main-container */
+#main-container > #sidebar {
+  width: 25; /* Fixed width for the sidebar (adjust as needed) */
+  height: 100%; /* Fill height of main-container */
+  border-right: thick $accent;
+  overflow-y: auto; /* Keep scrolling */
+}
+
+#sidebar > #user-list-header {
+  padding: 1;
+  text-style: bold;
+  width: 100%;
+}
+
+#sidebar > #user-list {
+  border: none;
+  height: 1fr;
+}
+
+#user-list > ListItem {
+  padding-left: 1;
+  padding-right: 1;
+  text-style: bold;
+  color: #e88eed;
+}
+
+/* Chat container within main-container */
+#main-container > #chat-container {
+  width: 1fr; /* Take remaining horizontal space in main-container */
+  height: 100%; /* Fill height of main-container */
+  /* Use grid for vertical layout of log and input */
+  grid-size: 1 2; /* 1 column, 2 rows */
+  grid-rows: 1fr auto; /* Log gets remaining space, input auto */
+  padding: 0 1; /* Add some horizontal padding */
+}
+
+#chat-container > #chat-log {
+  /* border: heavy $primary; (Optional border) */
+  /* height: 100%; (Handled by grid row 1) */
+  width: 100%; /* Fill width of chat-container */
+}
+
+#chat-container > #chat-input {
+  /* border: heavy $secondary; (Optional border) */
+  /* height: auto; (Handled by grid row 2) */
+  width: 100%; /* Fill width of chat-container */
+  margin-top: 1; /* Space above input */
+}
+
+$accent: #e88eed;
+
+/* Optional: Style the selected list item */
+ListView > ListItem.--highlight {
+  background: $accent;
+}
+
+#username {
+  padding-left: 1;
+  padding-right: 1;
+  text-style: bold;
+}

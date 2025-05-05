@@ -230,34 +230,13 @@ async def authenticate_user_by_key_async(
 # --- Synchronous Wrapper (Needed for current threading model) ---
 def authenticate_user_by_key_sync(
     db: Database, username: str, key_bytes_provided: bytes
-) -> bool:
+):
     """Synchronous wrapper to call the async authentication function."""
     try:
         return asyncio.run(
             authenticate_user_by_key_async(db, username, key_bytes_provided)
         )
-    except RuntimeError as e:
+    except Exception as e:
         logging.error(
             f"RuntimeError calling async auth for '{username}': {e}. Trying get_event_loop."
         )
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                logging.warning(
-                    "Cannot run nested asyncio loop easily from sync thread."
-                )
-                return False
-            else:
-                return loop.run_until_complete(
-                    authenticate_user_by_key_async(db, username, key_bytes_provided)
-                )
-        except Exception as inner_e:
-            logging.error(
-                f"Failed to run async auth even with get_event_loop for '{username}': {inner_e}"
-            )
-            return False
-    except Exception as e:
-        logging.error(
-            f"Unexpected error in sync wrapper for async auth '{username}': {e}"
-        )
-        return False
