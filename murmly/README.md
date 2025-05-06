@@ -50,3 +50,34 @@ Navigate to the `murmly` directory and run:
 
 ```bash
 python src/server.py
+```
+
+
+## Logging in for the first time
+In order to register for a user, you have to create a valid RSA-keypair for ssh. 
+
+This is done using: 
+```bash
+ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa_murmly
+```
+
+This creates a `public, private` key pair used for the identification on the server.
+To use those keys for identification, use: 
+
+```bash
+ssh -i ~/.ssh/id_rsa_murmly <username>@<server_ip> -p 2222
+```
+
+### Using our helper script
+
+For testing purposes, we provide a simple provisioning script to make key management easier:
+
+```bash
+# Generate a new key for a username
+./murmly.sh generate username1
+
+# Connect to the server with that username
+./murmly.sh connect username1
+```
+
+The script automatically handles key generation and storage in the `./keys/` directory, and uses the correct parameters when connecting to the server. Each user needs their own unique SSH key for authentication.

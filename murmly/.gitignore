@@ -1,0 +1,6 @@
+*.pem
+
+*.db
+
+# directory for temp pub,priv keys
+keys
