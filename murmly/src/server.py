@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -15,6 +15,11 @@ from passlib.context import CryptContext
 import signal
 import sys
 
+
+from db_utils import User, Base
+from socket_manager import SocketManager
+
+
 def signal_handler(sig, frame):
     print("Shutting down server...")
     sys.exit(0)
@@ -22,10 +27,12 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 
-from db_utils import User, Base
 
 # Create FastAPI app
 app = FastAPI(title="Murmly Chat API")
+
+# managing all the connections for messaging
+socket_manager = SocketManager()
 
 # Database setup (reusing elements from your existing code)
 DATABASE_URL = "sqlite+aiosqlite:///murmly.db"
@@ -186,7 +193,80 @@ async def get_current_user(
         raise credentials_exception
     return user
 
+# inspiration for messaging app from:
+# https://medium.com/@chodvadiyasaurabh/building-a-real-time-chat-application-with-fastapi-and-websocket-9965778e97be
+@app.websocket("/ws/{token}")
+async def websocket_endpoint(token: str, websocket: WebSocket, db: AsyncSession = Depends(get_db)):
+    user = None
+    
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    user_name = payload.get("sub")
+    if user_name is None:
+        await websocket.close()
+        return
+    
+    user = await get_user(user_name, db)
+    if not user: 
+        await websocket.close()
+        return
+    
+    await socket_manager.connect(websocket, user)
+    
+    try: 
+        while True:
+            data = await websocket.receive_json()
+            
+            recipient_username = data.get("recipient")
+            content = data.get("content")
+            
+            sender_username = user.username
+            
+            recipient_user = await get_user(recipient_username, db)
+            if not recipient_user:
+                await websocket.send_json({
+                    "error": "Recipient not found"
+                })
+                continue
+            
+            message_json = {
+                "sender": sender_username,
+                "recipient": recipient_username,
+                "content": content, 
+                "timestamp": datetime.now().isoformat()
+            }
+        
+            message_sent = await socket_manager.send_message(message=message_json, user= recipient_user)
+            
+            
+            await websocket.send_json({
+                "type": "delivery_status",
+                "recipient": recipient_username,
+                "delivered": message_sent,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        if user:
+            await socket_manager.disconnect(user)
+            user.is_online = False
+            await db.commit()
+        
+        await websocket.close()
+            
+@app.get("/users/online", response_model=list[str])
+async def get_online_users(current_user=Depends(get_current_user), db: AsyncSession=Depends(get_db)):
+    stmt = select(User).where(User.is_online == True)
+    result = await db.execute(stmt)
+    online_users = result.scalars().all()
+    
+    online_users = [user.username for user in online_users if user.username != current_user.username]
+    return online_users
 
+
+# test rest for auth - user only
 @app.get("/users/me", response_model=UserBase)
 async def read_users_me(current_user = Depends(get_current_user)):
     return current_user
+
+
