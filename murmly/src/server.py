@@ -4,8 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import select
-from pydantic import BaseModel
-import base64
+
 from typing import Optional
 from datetime import datetime, timedelta
 import jwt
@@ -18,6 +17,8 @@ import sys
 
 from db_utils import User, Base
 from socket_manager import SocketManager
+from models import *
+
 
 
 def signal_handler(sig, frame):
@@ -59,24 +60,6 @@ async def startup_event():
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# Models
-class UserBase(BaseModel):
-    username: str
-
-class UserCreate(UserBase):
-    password: str
-    public_key: Optional[str] = None
-
-class UserLogin(UserBase):
-    password: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    
-class TokenData(BaseModel):
-    username: str
 
 # Authentication helpers
 def verify_password(plain_password, hashed_password):
@@ -192,6 +175,44 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+@app.put("/users/me/public_key", response_model=dict)
+async def update_public_key(
+    public_key_update: PublicKeyUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    current_user.public_key_b64 = public_key_update.public_key
+    await db.commit()
+    return {"status": "success" }
+
+@app.get("/users/{username}/public_key", response_model=PublicKeyResponse)
+async def get_user_public_key(
+    username: str, 
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+): 
+    user = get_user(username, db)
+    
+    if not user: 
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    if user.username == current_user.username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot retrieve own public key"
+        )
+        
+        
+    # TODO: what happens if there is no pub key?
+    
+    return {
+        "username": user.username, 
+        "public_key": user.public_key_b64
+    }
+
 
 # inspiration for messaging app from:
 # https://medium.com/@chodvadiyasaurabh/building-a-real-time-chat-application-with-fastapi-and-websocket-9965778e97be
