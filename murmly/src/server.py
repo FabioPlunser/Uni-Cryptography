@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket
+from fastapi import (
+    FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+)
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -18,6 +20,8 @@ import sys
 from db_utils import User, Base
 from socket_manager import SocketManager
 from models import *
+from config import *
+import crypto_utils
 
 
 
@@ -34,6 +38,7 @@ app = FastAPI(title="Murmly Chat API")
 
 # managing all the connections for messaging
 socket_manager = SocketManager()
+dh_params = crypto_utils.parameters     # parameters (g, p for galois field) are computed by server. 
 
 # Database setup (reusing elements from your existing code)
 DATABASE_URL = "sqlite+aiosqlite:///murmly.db"
@@ -91,7 +96,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# Database dependency
+
 async def get_db():
     db = async_session_maker()
     try:
@@ -99,10 +104,9 @@ async def get_db():
     finally:
         await db.close()
 
-# OAuth2 scheme
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Endpoints
 @app.post("/register", response_model=UserBase)
 async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     # Check if user exists
@@ -151,7 +155,6 @@ async def login_for_access_token(
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-# User dependency for protected routes
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
@@ -192,7 +195,7 @@ async def get_user_public_key(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ): 
-    user = get_user(username, db)
+    user = await get_user(username, db)
     
     if not user: 
         raise HTTPException(
@@ -204,14 +207,28 @@ async def get_user_public_key(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot retrieve own public key"
         )
-        
-        
     # TODO: what happens if there is no pub key?
     
     return {
         "username": user.username, 
         "public_key": user.public_key_b64
     }
+    
+@app.get("/dh_params")
+def get_dh_params():
+    """diffie hellman parameters for exchange"""
+    if not dh_params:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="DH params not available"
+        )
+    
+    serialized_params = crypto_utils.serialize_parameters(dh_params)
+    serialized_params_str = serialized_params.decode("utf-8")
+    return {
+        "params": serialized_params_str
+    }
+    
 
 
 # inspiration for messaging app from:
@@ -235,7 +252,11 @@ async def websocket_endpoint(token: str, websocket: WebSocket, db: AsyncSession 
     
     try: 
         while True:
-            data = await websocket.receive_json()
+            try:
+                data = await websocket.receive_json()
+            except WebSocketDisconnect as e: 
+                print(f"WebSocket disconnected: {e}")
+                break
             
             recipient_username = data.get("recipient")
             content = data.get("content")

@@ -19,11 +19,26 @@ from cryptography.hazmat.primitives.serialization import (
 # for aes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# the parameters are shared by both parties. 
-# this is Z modulo nZ: a galois field with large prime. 
-# `key_size` param  specifies a prime number with approx. length of `key_size` bits.
-# the generator element is 2. 
-parameters: DHParameters = dh.generate_parameters(generator=2, key_size=2048)
+import random
+
+from config import *
+
+# In crypto_utils.py
+from cryptography.hazmat.primitives.asymmetric.dh import DHParameterNumbers
+
+# Use hardcoded parameters
+parameter_numbers = DHParameterNumbers(p=DH_P, g=DH_G)
+parameters = parameter_numbers.parameters()
+
+
+# # the parameters are shared by both parties. 
+# # this is Z modulo nZ: a galois field with large prime. 
+# # `key_size` param  specifies a prime number with approx. length of `key_size` bits.
+# # the generator element is 2. 
+# parameters: DHParameters = dh.generate_parameters(
+#     generator=2, 
+#     key_size=PRIME_BITS
+# )
 
 def generate_pair(parameters: DHParameters) -> Tuple[DHPrivateKey, DHPublicKey]: 
     priv_key : DHPrivateKey = parameters.generate_private_key()
@@ -36,7 +51,7 @@ def exchange_and_derive(priv_key: DHPrivateKey, peer_pub_key: DHPublicKey) ->  b
     # the shared key is A=B^{priv_key} mod p
     shared_key: bytes = priv_key.exchange(peer_public_key=peer_pub_key)
     
-    # as stated in documentation https://cryptography.io/en/latest/hazmat/primitives/asymmetric/dh/#cryptography.hazmat.primitives.asymmetric.dh.DHPrivateKey
+    # as stated in documentatiobut n https://cryptography.io/en/latest/hazmat/primitives/asymmetric/dh/#cryptography.hazmat.primitives.asymmetric.dh.DHPrivateKey
     # derive the key again to streghten the key
     derived_key = HKDF(
         algorithm=hashes.SHA256(),
@@ -86,6 +101,7 @@ def decrypt(key: bytes, ct: bytes) -> str:
     
     
 def serialize_pub_key(pub_key: DHPublicKey) -> bytes:
+    """serializes public key to bytes"""
     serialized_pub: bytes = pub_key.public_bytes(
         encoding=Encoding.PEM,
         format=PublicFormat.SubjectPublicKeyInfo,
@@ -120,4 +136,5 @@ def main():
     assert derived_key_bob == derived_key_alice, "Derived keys do not match!"
     print("works lol!")
 
-main()
+if __name__ == '__main__':
+    main()

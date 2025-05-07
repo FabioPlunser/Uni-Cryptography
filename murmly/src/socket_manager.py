@@ -21,6 +21,7 @@ class SocketManager:
             await websocket.close()
             del self.connections[user.id]
             print(f"User {user.username} with id: {user.id} disconnected.")
+
             
     async def send_message(self, message: dict, user: User) -> bool:
         if user.id in self.connections:
