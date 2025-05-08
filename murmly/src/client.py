@@ -7,7 +7,7 @@ from datetime import datetime
 import base64
 
 import crypto_utils
-
+from config import *
 
 class ChatClient:
     def __init__(self, server_url):
@@ -89,6 +89,7 @@ class ChatClient:
             content = data.get("content")
             timestamp = data.get("timestamp", datetime.now().isoformat())
             
+            # check if secure channel / key exchange already happened
             if sender not in self.session_keys: 
                 print(f"establishing secure channel with {sender}...")
                 if not self.establish_sec_channel(sender):
@@ -113,15 +114,12 @@ class ChatClient:
             print(f"Raw message: {message}")
         
     def on_error(self, ws, error):
-        """Handle WebSocket errors"""
         print(f"WebSocket error: {error}")
         
     def on_close(self, ws, close_status_code, close_msg):
-        """Handle WebSocket connection close"""
         print("WebSocket connection closed")
         
     def on_open(self, ws):
-        """Handle WebSocket connection open"""
         print("WebSocket connection established")
         
     def connect_websocket(self):
@@ -130,7 +128,6 @@ class ChatClient:
         ws_base_url = self.server_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_base_url}/ws/{self.auth_token}"
         
-        # Create WebSocket connection
         websocket.enableTrace(False)  # Set to True for debugging
         self.ws = websocket.WebSocketApp(
             ws_url,
@@ -146,7 +143,7 @@ class ChatClient:
             
         thread = threading.Thread(target=run_forever, daemon=True)
         thread.start()
-        time.sleep(1)  # Give time for the connection to establish
+        time.sleep(1)  # sleep for letting connection establish
         
     def send_message(self, recipient, content):
         if not self.ws:
@@ -165,7 +162,6 @@ class ChatClient:
             
             encrypted_b64 = base64.b64encode(encrypted_content).decode('ascii')
             
-            # Send via WebSocket
             message = {
                 "recipient": recipient,
                 "content": encrypted_b64
@@ -358,8 +354,6 @@ def chat_interface(client):
         client.stop()
 
 if __name__ == "__main__":
-    SERVER_URL = "http://localhost:8000"
-    
     username = input("Enter username: ")
     password = input("Enter password: ")
     

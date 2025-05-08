@@ -12,33 +12,25 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, ParameterFormat
 from cryptography.hazmat.primitives.serialization import (
     load_pem_public_key, 
-    load_pem_private_key,
     load_pem_parameters
 )
 
 # for aes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-import random
-
 from config import *
 
-# In crypto_utils.py
-from cryptography.hazmat.primitives.asymmetric.dh import DHParameterNumbers
+def generate_dh_parameters():
+# the parameters are shared by both parties. 
+# this is Z modulo nZ: a galois field with large prime. 
+# `key_size` param  specifies a prime number with approx. length of `key_size` bits.
+# the generator element is 2. 
+    parameters: DHParameters = dh.generate_parameters(
+        generator=2, 
+        key_size=PRIME_BITS
+    )
+    return parameters
 
-# Use hardcoded parameters
-parameter_numbers = DHParameterNumbers(p=DH_P, g=DH_G)
-parameters = parameter_numbers.parameters()
-
-
-# # the parameters are shared by both parties. 
-# # this is Z modulo nZ: a galois field with large prime. 
-# # `key_size` param  specifies a prime number with approx. length of `key_size` bits.
-# # the generator element is 2. 
-# parameters: DHParameters = dh.generate_parameters(
-#     generator=2, 
-#     key_size=PRIME_BITS
-# )
 
 def generate_pair(parameters: DHParameters) -> Tuple[DHPrivateKey, DHPublicKey]: 
     priv_key : DHPrivateKey = parameters.generate_private_key()
@@ -124,6 +116,7 @@ def deserialize_parameters(serialized_params: bytes) -> DHParameters:
     return load_pem_parameters(serialized_params)
 
 def main(): 
+    parameters = generate_dh_parameters()
     bob_pair = generate_pair(parameters)
     alice_pair = generate_pair(parameters)
     

@@ -13,60 +13,44 @@ import jwt
 from passlib.context import CryptContext
 
 
-import signal
-import sys
-
-
 from db_utils import User, Base
 from socket_manager import SocketManager
 from models import *
 from config import *
 import crypto_utils
 
-
-
-def signal_handler(sig, frame):
-    print("Shutting down server...")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
-
-
-
-# Create FastAPI app
 app = FastAPI(title="Murmly Chat API")
 
 # managing all the connections for messaging
 socket_manager = SocketManager()
-dh_params = crypto_utils.parameters     # parameters (g, p for galois field) are computed by server. 
+dh_params = crypto_utils.generate_dh_parameters()   # parameters (g, p for galois field) are computed by server. 
 
-# Database setup (reusing elements from your existing code)
+# database setup
 DATABASE_URL = "sqlite+aiosqlite:///murmly.db"
 engine = create_async_engine(DATABASE_URL, echo=True)
 async_session_maker = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
 
-# JWT settings
-SECRET_KEY = "your-secret-key-here"  # In production use a proper secret
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     print("Database tables created successfully!")
 
-# Add a startup event handler
+
 @app.on_event("startup")
 async def startup_event():
     await init_db()
     print("Database initialized during startup!")
 
-# Password hashing
+
+#----------------------------
+# authentication and authorization
+# password hashing using cryptoContext: library from passlib, hope this is 
+# ok as this is not in dependence of the dh implementation of e2ee
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Authentication helpers
+
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -96,6 +80,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+#----------------------------
 
 async def get_db():
     db = async_session_maker()
