@@ -284,7 +284,7 @@ class ChatClient:
         if not self.auth_token: 
             print("Not authenticated")
             return False
-        
+       e
         response = requests.get(url=f"{self.server_url}/dh_params")
         
         if response.status_code == 200:
