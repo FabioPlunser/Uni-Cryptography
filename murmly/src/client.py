@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import datetime
 import base64
+import os
 
 import crypto_utils
 from config import *
@@ -20,8 +21,10 @@ class ChatClient:
         # encryption related stuff
         self.priv_key = None
         self.pub_key  = None
-        self.session_keys = {} 
-        self.dh_parameters = None
+        self.session_keys   = {} 
+        self.nonce_sessions = {}
+        self.dh_parameters  = None
+
 
         
     def register(self, username, password):
@@ -158,8 +161,22 @@ class ChatClient:
                 return False
 
         try:
-            encrypted_content = crypto_utils.encrypt(self.session_keys[recipient], content)
+            current_nonce = self.nonce_sessions.get(recipient)
+            if current_nonce is None:
+                # there is no nonce stored => generate nonce
+                current_nonce = os.urandom(NONCE_SIZE)  
+            encrypted_content = crypto_utils.encrypt(
+                self.session_keys[recipient],
+                content,
+                nonce=current_nonce
+            )
+
+            # update nonce for this session for next message
+            old_nonce = current_nonce
+            nonce_int = int.from_bytes(current_nonce, byteorder="big")
+            current_nonce = int.to_bytes(nonce_int+1, length=len(old_nonce), byteorder="big")
             
+            self.nonce_sessions[recipient] = current_nonce
             encrypted_b64 = base64.b64encode(encrypted_content).decode('ascii')
             
             message = {

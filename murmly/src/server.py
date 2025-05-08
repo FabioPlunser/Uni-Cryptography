@@ -107,7 +107,7 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     new_user = User(
         username=user.username,
         hashed_password=hashed_password,
-        public_key_b64=user.public_key if user.public_key else None,
+        public_key_b64=None,
         is_online=True
     )
     
@@ -263,7 +263,6 @@ async def websocket_endpoint(token: str, websocket: WebSocket, db: AsyncSession 
             }
         
             message_sent = await socket_manager.send_message(message=message_json, user= recipient_user)
-            
             
             await websocket.send_json({
                 "type": "delivery_status",

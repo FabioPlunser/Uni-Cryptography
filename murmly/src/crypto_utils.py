@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 import os
 
 from cryptography.hazmat.primitives import hashes
@@ -55,9 +55,16 @@ def exchange_and_derive(priv_key: DHPrivateKey, peer_pub_key: DHPublicKey) ->  b
     return derived_key
 
 
-def encrypt_aes_gcm(key: bytes, data: bytes, associated_data: bytes=None) -> bytes:
+def encrypt_aes_gcm(
+    key: bytes, 
+    data: bytes, 
+    associated_data: bytes=None, 
+    nonce: bytes=None
+) -> bytes:
+    if nonce == None:
+        # generate nonce, should not happen
+        nonce = os.urandom(NONCE_SIZE)
     
-    nonce = os.urandom(12)
     aesgcm = AESGCM(key)
     
     ct = aesgcm.encrypt(
@@ -79,10 +86,10 @@ def decrypt_aes_gcm(key: bytes, data: bytes, associated_data: bytes=None) -> byt
     )
     return pt 
 
-def encrypt(key: bytes, text: str) -> bytes: 
+def encrypt(key: bytes, text: str, nonce: bytes) -> bytes: 
     text_enc = text.encode('utf-8')
     # associated_data = b""     # when needed
-    ct = encrypt_aes_gcm(key, text_enc)
+    ct = encrypt_aes_gcm(key, text_enc, nonce=nonce)
     return ct
 
 def decrypt(key: bytes, ct: bytes) -> str:
