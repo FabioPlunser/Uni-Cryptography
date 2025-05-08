@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+from config import *
+
 # --- Logging Setup ---
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -27,8 +29,6 @@ logging.basicConfig(
 
 # --- Database Setup ---
 Base = declarative_base()
-DATABASE_FILE = "murmly.db"
-DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_FILE}"  # Use aiosqlite driver
 
 
 # --- Models ---
