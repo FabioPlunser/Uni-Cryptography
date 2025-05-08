@@ -1,0 +1,97 @@
+Screen {
+  background: #000000; 
+}
+
+#root-container {
+  width: 100%;
+  height: 100%;
+  align: center middle; 
+}
+
+#app-frame {
+  width: 80%;
+  height: 80%;
+  background: $surface;
+  border: round $accent;
+
+  grid-size: 1 3; 
+  grid-rows: auto 1fr auto; 
+}
+
+#app-frame > Header {
+  height: auto; 
+  width: 100%; 
+}
+
+#app-frame > Footer {
+  height: auto; 
+  width: 100%; 
+}
+
+#app-frame > #main-container {
+  width: 100%; 
+  height: 100%; 
+}
+
+#main-container > #sidebar {
+  width: 25; 
+  height: 100%; 
+  border-right: thick $accent;
+  overflow-y: auto; 
+}
+
+#sidebar > #user-list-header {
+  padding: 1;
+  text-style: bold;
+  width: 100%;
+}
+
+#sidebar > #user-list {
+  border: none;
+  height: 1fr;
+}
+
+#main-container > #chat-container {
+  width: 1fr; 
+  height: 100%; 
+  grid-size: 1 2; 
+  grid-rows: 1fr auto; 
+  padding: 0 1; 
+}
+
+#chat-container > #chat-log {
+  width: 100%; 
+}
+
+#chat-container > #chat-input {
+  width: 100%; 
+  margin-top: 1; 
+}
+
+
+UserStatusListItem {
+  height: auto;
+  padding-top: 1;
+  padding-left: 1;
+}
+UserStatusListItem .status-dot {
+  padding-right: 1;
+  color: #347deb;
+}
+UserStatusListItem .status-dot.online {
+  color: #6eeb34; 
+}
+UserStatusListItem .status-dot.offline {
+  color: #eb5334; 
+}
+# UserStatusListItem #username-label {
+#   /* Style for the username if needed */
+#   /* width: 1fr; (Handled by grid) */
+# }
+/* Style for the secondary label */
+# UserStatusListItem #last-text-label {
+#   padding-left: 2; /* Indent slightly */
+#   color: $text-muted;
+#   height: 1;
+#   /* Optional: Hide if empty? */
+# }
