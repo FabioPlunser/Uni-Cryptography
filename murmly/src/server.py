@@ -72,7 +72,8 @@ async def authenticate_user(username: str, password: str, db: AsyncSession):
     user = await get_user(username, db)
     if not user:
         return False
-    if not verify_password(password, user.hashed_password):
+    #if not verify_password(password, user.hashed_password):
+    if password != user.hashed_password:
         return False
     return user
 
@@ -111,10 +112,10 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
         )
 
     # Create new user
-    hashed_password = get_password_hash(user.password)
+    # hashed_password = get_password_hash(user.password)
     new_user = User(
         username=user.username,
-        hashed_password=hashed_password,
+        hashed_password=user.password,      # is already hashed by sha
         public_key_b64=None,
         is_online=True
     )

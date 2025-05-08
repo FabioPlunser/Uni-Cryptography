@@ -6,6 +6,8 @@ import time
 from datetime import datetime
 import base64
 import os
+import hashlib
+
 
 import crypto_utils
 from config import *
@@ -28,9 +30,10 @@ class ChatClient:
 
 
     def register(self, username, password):
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
         json_data = {
             "username": username,
-            "password": password,
+            "password": hashed_password,
         }
         response = requests.post(f"{self.server_url}/register", json=json_data)
         if response.status_code == 200:
@@ -42,7 +45,11 @@ class ChatClient:
             return False
 
     def login(self, username, password):
-        data = {"username": username, "password": password}
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        data = {
+            "username": username, 
+            "password": hashed_password
+        }
         response = requests.post(f"{self.server_url}/token", data=data)
         if response.status_code == 200:
             token_data = response.json()
