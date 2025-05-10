@@ -268,7 +268,7 @@ async def websocket_endpoint(token: str, websocket: WebSocket):
                 continue
 
             # Create message in database with message number
-            message = await db.create_message(user, recipient_user, content, message_number)
+            message = await db.create_message(user, recipient_user, content)
             logger.info(f"Message created: {message}")
             # Update or create chat records for both users
             await db.update_user_chat(user.id, recipient_user.id, message.id)
