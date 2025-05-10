@@ -1,31 +1,29 @@
-import { error } from "./stores.svelte";
+import { errorStore } from "./stores/error.svelte";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 
-async function hashPassword(password: string): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
-  return btoa(String.fromCharCode(...new Uint8Array(hash)));
-}
-
 export async function registerUser(username: string, password: string): Promise<String> {
-  let hashedPassword = await hashPassword(password);
   let userData: UserCreate = {
     username: username,
-    password: hashedPassword,
+    password: password,
   };
+  console.log("Registering user:", userData);
 
   const response = await fetch(`${API_URL}/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(userData),
   });
+  const data = await response.json();
   if (!response.ok) {
-    const errorData = await response.json();
-    error.message = errorData.detail;
-    error.code = response.status;
+    errorStore.setError(data.detail, data.status);
   }
-  return response.json();
+  if (data.success) {
+    alert("User registered successfully");
+  }
+
+  return data;
 }
 
 export async function loginForToken(
@@ -36,12 +34,14 @@ export async function loginForToken(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formData,
   });
+  const data = await response.json();
   if (!response.ok) {
-    const errorData = await response.json();
-    error.message = errorData.detail;
-    error.code = response.status;
+    errorStore.setError(data.detail, data.status);
+    throw new Error("Login failed");
   }
-  return response.json();
+
+  console.log("Token response:", data);
+  return data;
 }
 
 export async function getDhParameters(token: string): Promise<string> {
@@ -50,8 +50,7 @@ export async function getDhParameters(token: string): Promise<string> {
   });
   if (!response.ok) {
     const errorData = await response.json();
-    error.message = errorData.detail;
-    error.code = response.status;
+    errorStore.setError(errorData.detail, response.status);
   }
   const data = await response.json();
   return data.params;
@@ -61,7 +60,7 @@ export async function updateUserPublicKey(
   publicKeyData: PublicKeyUpdateData,
   token: string
 ): Promise<any> {
-  const response = await fetch(`${API_URL}/users/me/public_key`, {
+  const response = await fetch(`${API_URL}/update_public_key`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -71,8 +70,47 @@ export async function updateUserPublicKey(
   });
   if (!response.ok) {
     const errorData = await response.json();
-    error.message = errorData.detail;
-    error.code = response.status;
+    errorStore.setError(errorData.detail, response.status);
   }
   return response.json();
 }
+
+export async function getOnlineUsers(token: string): Promise<User[]> {
+  const response = await fetch(`${API_URL}/users/online`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  let data = await response.json();
+  if (!response.ok) {
+    errorStore.setError(data.detail, response.status);
+  }
+  return data
+}
+export async function getUserPublicKey(
+  username: string,
+  token: string
+): Promise<string> {
+  const response = await fetch(`${API_URL}/users/${username}/public_key`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    errorStore.setError(errorData.detail, response.status);
+  }
+  const data = await response.json();
+  return data.public_key;
+}
+
+export async function getPeerPublicKey(
+  username: string,
+  token: string
+): Promise<PublicKeyResponse> {
+  const response = await fetch(`${API_URL}/users/${username}/public_key`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    errorStore.setError(errorData.detail, response.status);
+  }
+  const data = await response.json();
+  return data;
+}   
