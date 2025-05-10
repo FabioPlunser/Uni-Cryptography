@@ -16,8 +16,8 @@ import {
   deserializeDhPrivateKey,
 } from "$lib/crypto";
 
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Get API URL from environment, fallback to relative path in production
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface CryptoState {
   dhParams: DHParameters | null;

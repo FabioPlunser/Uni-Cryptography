@@ -23,6 +23,9 @@ from models import (
     Message,
     MessageSchema,
 )
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
 from config import PRIME_BITS, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
@@ -46,9 +49,22 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Murmly Chat API", lifespan=lifespan)
+
+# Mount the SvelteKit build output
+if os.path.exists("website/build"):
+    app.mount("/", StaticFiles(directory="website/build", html=True), name="static")
+
+# Add a catch-all route to serve index.html for client-side routing
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    if os.path.exists("website/build"):
+        return FileResponse("website/build/index.html")
+    raise HTTPException(status_code=404, detail="Not found")
+
+# Keep your existing CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, replace with your actual frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
