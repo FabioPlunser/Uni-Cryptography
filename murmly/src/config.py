@@ -21,3 +21,6 @@ DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_FILE}"  # Use aiosqlite driver
 
 
 SERVER_URL = "http://localhost:8000"
+
+# how many bytes for nonce to generate
+NONCE_SIZE = 12

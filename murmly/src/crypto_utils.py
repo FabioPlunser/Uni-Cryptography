@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 import os
 
 from cryptography.hazmat.primitives import hashes
@@ -87,7 +87,7 @@ def decrypt_aes_gcm(key: bytes, data: bytes, associated_data: bytes = None) -> b
 def encrypt(key: bytes, text: str) -> bytes:
     text_enc = text.encode("utf-8")
     # associated_data = b""     # when needed
-    ct = encrypt_aes_gcm(key, text_enc)
+    ct = encrypt_aes_gcm(key, text_enc, nonce=nonce)
     return ct
 
 
