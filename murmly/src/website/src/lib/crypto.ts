@@ -1,44 +1,65 @@
-export function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+export function hexToUint8Array(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
   }
-  return window.btoa(binary);
+  return bytes;
 }
 
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  // Create a Uint8Array view of the buffer
+  const bytes = new Uint8Array(buffer);
 
-
-export function base64ToArrayBuffer(base64: string): ArrayBuffer { const binary_string = window.atob(base64);
-  const len = binary_string.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary_string.charCodeAt(i);
+  // Use a more robust approach with mapping
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
-  return bytes.buffer;
+
+  // Use standard base64 encoding
+  return btoa(binary);
+}
+
+export function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  try {
+    // Decode base64 to binary string
+    const binaryString = atob(base64);
+
+    // Create buffer with correct length
+    const bytes = new Uint8Array(binaryString.length);
+
+    // Fill the buffer byte by byte
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    return bytes.buffer;
+  } catch (e) {
+    console.error('Error decoding base64:', e, 'Original string:', base64);
+    throw e;
+  }
 }
 
 
 export interface DHParameters {
-  p: bigint; 
-  g: bigint; 
+  p: bigint;
+  g: bigint;
 }
 
 export interface DHPublicKey {
-  y: bigint; 
+  y: bigint;
   params: DHParameters;
 }
 
 export interface DHPrivateKey {
-  x: bigint; 
+  x: bigint;
   params: DHParameters;
 }
 
 export function deserializeDhParameters(serializedParams: string): DHParameters {
   const params = JSON.parse(serializedParams);
   return {
-    p: BigInt(`0x${params.p_hex}`), 
+    p: BigInt(`0x${params.p_hex}`),
     g: BigInt(`0x${params.g_hex}`),
   };
 }
@@ -49,7 +70,7 @@ export function generateDhKeyPair(params: DHParameters): {
 } {
   const x = BigInt(
     Math.floor(Math.random() * Number(params.p - 2n)) + 1
-  ); 
+  );
 
   const y = power(params.g, x, params.p); // g^x mod p
 
@@ -80,32 +101,37 @@ export async function deriveSharedSecret(
 ): Promise<CryptoKey> {
   // Shared secret: (peer_pub_key.y ^ my_priv_key.x) mod p
   const sharedSecretBigInt = power(peerPubKey.y, privKey.x, privKey.params.p);
+  console.log("Derived shared secret (BigInt):", sharedSecretBigInt.toString(16));
 
   // Convert BigInt shared secret to ArrayBuffer
   let hex = sharedSecretBigInt.toString(16);
-  if (hex.length % 2) {
-    hex = "0" + hex;
-  } // Ensure even length for Buffer.from
-  const sharedSecretBytes = new Uint8Array(
-    hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-  );
+  if (hex.length % 2) hex = "0" + hex;
+  const sharedSecretBytes = new Uint8Array(hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
 
-  // Use HKDF or SHA-256 to derive a fixed-size AES key
-  // For simplicity, using SHA-256 directly on the shared secret bytes.
-  // In a real app, use HKDF (RFC 5869).
-  const aesKeyMaterial = await window.crypto.subtle.digest(
-    "SHA-256",
-    sharedSecretBytes.buffer
-  );
-
-  // Import this material as an AES-GCM key
-  return window.crypto.subtle.importKey(
+  // Import the shared secret as a raw key for HKDF
+  const sharedSecretKey = await window.crypto.subtle.importKey(
     "raw",
-    aesKeyMaterial,
-    { name: "AES-GCM" },
-    false, // not extractable
+    sharedSecretBytes.buffer,
+    { name: "HKDF" },
+    false,
+    ["deriveKey"]
+  );
+
+  // Use HKDF to derive the AES key, matching the server's implementation
+  const derivedKey = await window.crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      salt: new Uint8Array(0), // Empty array equivalent to Python's None
+      info: new TextEncoder().encode("handshake data"),
+      hash: "SHA-256",
+    },
+    sharedSecretKey,
+    { name: "AES-GCM", length: 256 }, // 256 bits = 32 bytes, matching Python's length=32
+    false,
     ["encrypt", "decrypt"]
   );
+  console.log("Successfully derived AES-GCM key");
+  return derivedKey;
 }
 
 // --- AES-GCM Encryption/Decryption ---
@@ -114,7 +140,7 @@ const AES_IV_LENGTH = 12; // Bytes for AES-GCM IV (96 bits is common)
 export async function encryptMessage(
   aesKey: CryptoKey,
   plaintext: string
-): Promise<string> { // Returns Base64 encoded (IV + Ciphertext)
+): Promise<string> {
   const iv = window.crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
   const encodedPlaintext = new TextEncoder().encode(plaintext);
 
@@ -136,16 +162,81 @@ export async function decryptMessage(
   aesKey: CryptoKey,
   base64IvAndCiphertext: string
 ): Promise<string> {
-  const ivAndCiphertext = base64ToArrayBuffer(base64IvAndCiphertext);
+  try {
+    console.log("Starting decryption of message:", base64IvAndCiphertext);
 
-  const iv = ivAndCiphertext.slice(0, AES_IV_LENGTH);
-  const ciphertext = ivAndCiphertext.slice(AES_IV_LENGTH);
+    // Log the base64 string characteristics
+    console.log("Base64 string length:", base64IvAndCiphertext.length);
+    console.log("Base64 string pattern check:", base64IvAndCiphertext.match(/^[A-Za-z0-9+/=]+$/) ? "Valid base64" : "Invalid base64 chars");
 
-  const decryptedBuffer = await window.crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: new Uint8Array(iv) }, // Ensure iv is Uint8Array
-    aesKey,
-    ciphertext
-  );
+    const ivAndCiphertext = new Uint8Array(base64ToArrayBuffer(base64IvAndCiphertext));
+    console.log("Decoded message length:", ivAndCiphertext.length);
 
-  return new TextDecoder().decode(decryptedBuffer);
+    if (ivAndCiphertext.length <= AES_IV_LENGTH) {
+      throw new Error(`Message too short: ${ivAndCiphertext.length} bytes (need more than IV length of ${AES_IV_LENGTH})`);
+    }
+
+    // Extract IV and ciphertext
+    const iv = ivAndCiphertext.slice(0, AES_IV_LENGTH);
+    const ciphertext = ivAndCiphertext.slice(AES_IV_LENGTH);
+    console.log("IV length:", iv.length, "Ciphertext length:", ciphertext.length);
+    console.log("IV (hex):", Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''));
+
+    if (ciphertext.length === 0) {
+      throw new Error("Ciphertext is empty after IV extraction");
+    }
+
+    console.log("Attempting decrypt with Web Crypto API...");
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: iv },
+      aesKey,
+      ciphertext
+    );
+    console.log("Decryption successful, buffer size:", decryptedBuffer.byteLength);
+
+    const decoded = new TextDecoder().decode(decryptedBuffer);
+    console.log("Decoded message:", decoded);
+    return decoded;
+  } catch (error) {
+    console.error("Decryption error details:", {
+      error,
+      message: base64IvAndCiphertext,
+      messageLength: base64IvAndCiphertext.length
+    });
+    throw error;
+  }
+}
+export interface DeserializedPeerPublicKey {
+  y: bigint;
+}
+
+export function deserializeDhPublicKey(
+  serializedPubKey: string,
+  params: DHParameters
+): DHPublicKey {
+  // Assumes serializedPubKey is a JSON string like: {"y_hex":"..."}
+  const pubKeyData = JSON.parse(serializedPubKey);
+  if (typeof pubKeyData.y_hex !== "string") {
+    throw new Error("Invalid serialized public key format: missing y_hex string.");
+  }
+  return {
+    y: BigInt(`0x${pubKeyData.y_hex}`),
+    params: params,
+  };
+
+}
+
+export function serializeDhPrivateKey(privKey: DHPrivateKey): string {
+  return JSON.stringify({ x_hex: privKey.x.toString(16) });
+}
+
+export function deserializeDhPrivateKey(serializedPrivKey: string, params: DHParameters): DHPrivateKey {
+  const privKeyData = JSON.parse(serializedPrivKey);
+  if (typeof privKeyData.x_hex !== "string") {
+    throw new Error("Invalid serialized private key format: missing x_hex string.");
+  }
+  return {
+    x: BigInt(`0x${privKeyData.x_hex}`),
+    params: params,
+  };
 }

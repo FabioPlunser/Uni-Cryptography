@@ -15,6 +15,7 @@ declare global {
 	}
 
 	export interface User {
+		id: number;
 		username: string;
 		public_key_b64: string;
 		is_online: boolean;
@@ -35,6 +36,45 @@ declare global {
 		username: string | null;
 		token: string | null;
 		isAuthenticated: boolean;
+	}
+
+	export interface CryptoState {
+		dhParams: DHParameters | null;
+		myDhPrivateKey: DHPrivateKey | null;
+		myDhPublicKey: DHPublicKey | null;
+		peerSharedSecrets: Map<string, CryptoKey>;
+	}
+
+	export interface Message {
+		id?: string;
+		sender: User;
+		recipient: User;
+		content: string;
+		timestamp: string;
+		isMine: boolean;
+		delivered?: boolean;
+		type?: "incoming" | "outgoing" | "status" | "error";
+	}
+
+	export interface WebSocketPayload {
+		type?: "delivery_status";
+		sender?: User;
+		recipient: User;
+		content?: string;
+		timestamp: string;
+		delivered?: boolean;
+		error?: string;
+		is_new_chat?: boolean;
+	}
+
+	export interface WebSocketMessage {
+		type?: "delivery_status" | "error" | "message";
+		sender?: string;
+		recipient: string;
+		content?: string;
+		timestamp: string;
+		delivered?: boolean;
+		error?: string;
 	}
 }
 

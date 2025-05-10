@@ -21,7 +21,8 @@ class ChatClient:
         # encryption related stuff
         self.priv_key = None
         self.pub_key = None
-        self.session_keys = {}
+        self.session_keys = {}  # username -> KeyRotationManager
+        self.message_counters = {}  # username -> message counter
         self.dh_parameters = None
 
     def register(self, username, password):
@@ -95,10 +96,14 @@ class ChatClient:
             try:
                 encoded_bytes = base64.b64decode(content)
 
-                # decrypüt
-                decrypted_message = crypto_utils.decrypt(
-                    self.session_keys[sender], encoded_bytes
-                )
+                # decrypt
+                decrypted_message = self.decrypt_message(sender, encoded_bytes, self.message_counters[sender])
+
+                # Check if this is a new chat
+                is_new_chat = data.get("is_new_chat", False)
+                if is_new_chat:
+                    print(f"\n🔔 New chat from {sender}!")
+
                 print(f"\n[{timestamp}] {sender}: {decrypted_message}")
             except Exception as e:
                 print(f"Error decrypting message from {sender}: {e}")
@@ -153,13 +158,11 @@ class ChatClient:
                 return False
 
         try:
-            encrypted_content = crypto_utils.encrypt(
-                self.session_keys[recipient], content
-            )
+            encrypted_content, message_number = self.encrypt_message(recipient, content)
 
             encrypted_b64 = base64.b64encode(encrypted_content).decode("ascii")
 
-            message = {"recipient": recipient, "content": encrypted_b64}
+            message = {"recipient": recipient, "content": encrypted_b64, "message_number": message_number}
             self.ws.send(json.dumps(message))
             return True
         except Exception as e:
@@ -213,7 +216,7 @@ class ChatClient:
         send_json = {"public_key": pub_key_serialized_str}
 
         response = requests.put(
-            url=f"{self.server_url}/users/me/public_key",
+            url=f"{self.server_url}/upload_public_key",
             json=send_json,  # no need to conver to json, as fastapi does this autmatically (spring boot ptsd :/)
             headers=self.get_auth_header(),
         )
@@ -260,7 +263,9 @@ class ChatClient:
 
         try:
             shared_key = crypto_utils.exchange_and_derive(self.priv_key, peer_pub_key)
-            self.session_keys[peer_username] = shared_key
+            # Initialize KeyRotationManager with the initial shared key
+            self.session_keys[peer_username] = crypto_utils.KeyRotationManager(shared_key)
+            self.message_counters[peer_username] = 0
             print(f"Secure channel established with {peer_username}")
             return True
         except Exception as e:
@@ -281,6 +286,45 @@ class ChatClient:
         else:
             print(f"Failed to get DH parameters: {response.text}")
             return False
+
+    def encrypt_message(self, peer_username: str, message: str) -> tuple[bytes, int]:
+        """
+        Encrypt a message for a peer, handling key rotation.
+        Returns the encrypted message and the message number.
+        """
+        if peer_username not in self.session_keys:
+            if not self.establish_sec_channel(peer_username):
+                raise Exception(f"No secure channel with {peer_username}")
+
+        key_manager = self.session_keys[peer_username]
+        message_number = self.message_counters[peer_username]
+        
+        # Get current key and encrypt
+        current_key = key_manager.get_current_key()
+        encrypted = crypto_utils.encrypt(current_key, message)
+        
+        # Increment counter and rotate key if needed
+        key_manager.increment_counter()
+        self.message_counters[peer_username] += 1
+        
+        return encrypted, message_number
+
+    def decrypt_message(self, peer_username: str, encrypted_message: bytes, message_number: int) -> str:
+        """
+        Decrypt a message from a peer, handling key rotation.
+        """
+        if peer_username not in self.session_keys:
+            if not self.establish_sec_channel(peer_username):
+                raise Exception(f"No secure channel with {peer_username}")
+
+        key_manager = self.session_keys[peer_username]
+        
+        # Get the key that was used for this message number
+        key = key_manager.get_key_for_message(message_number)
+        
+        # Decrypt using the appropriate key
+        decrypted = crypto_utils.decrypt(key, encrypted_message)
+        return decrypted.decode('utf-8')
 
 
 def chat_interface(client):

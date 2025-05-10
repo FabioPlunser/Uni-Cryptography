@@ -4,3 +4,8 @@
 
 # directory for temp pub,priv keys
 keys
+node_modules
+.svelte-kit
+build
+__pycache__
+

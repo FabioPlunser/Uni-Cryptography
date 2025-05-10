@@ -1,7 +1,7 @@
 # length for galios filed in crypto
 # obviously this should be larger for production, but it takes really long 
 # small bit size for testing
-PRIME_BITS = 512
+PRIME_BITS = 1024
 
 # only for testing, in production this should not be used
 #pregenerated prime number, as running on separate clients leads to new params
