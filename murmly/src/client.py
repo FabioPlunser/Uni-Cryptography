@@ -3,10 +3,11 @@ import websocket
 import json
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import base64
 import os
 import hashlib
+import bcrypt
 
 
 import crypto_utils
@@ -19,20 +20,34 @@ class ChatClient:
         self.auth_token = None
         self.token_type = None
         self.username = None
+        self.user_id = None
         self.ws = None
 
         # encryption related stuff
         self.priv_key = None
         self.pub_key = None
-        self.session_keys = {}  # username -> KeyRotationManager
-        self.message_counters = {}  # username -> message counter
+        self.session_keys = {}  # user_id -> KeyRotationManager
+        self.message_counters = {}  # user_id -> message counter
         self.dh_parameters = None
 
+    def hash_password(self, password):
+        """Hash password using SHA-256 and convert to base64, matching website implementation"""
+        # Create SHA-256 hash
+        hash_obj = hashlib.sha256(password.encode())
+        # Get bytes
+        hash_bytes = hash_obj.digest()
+        # Convert to base64
+        return base64.b64encode(hash_bytes).decode('ascii')
+
     def register(self, username, password):
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        hashed_password = self.hash_password(password)
         json_data = {
             "username": username,
             "password": hashed_password,
+            "id": 0,  # This will be assigned by the server
+            "is_online": False,
+            "last_seen": datetime.now(timezone.utc).isoformat(),
+            "has_chat": False
         }
         response = requests.post(f"{self.server_url}/register", json=json_data)
         if response.status_code == 200:
@@ -44,7 +59,7 @@ class ChatClient:
             return False
 
     def login(self, username, password):
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        hashed_password = self.hash_password(password)
         data = {
             "username": username, 
             "password": hashed_password
@@ -55,11 +70,26 @@ class ChatClient:
             self.auth_token = token_data["access_token"]
             self.token_type = token_data["token_type"]
             self.username = username
-            print(f"Logged in as {username}")
-            return True
+            
+            # Get user info to set user_id
+            user_info = self.get_current_user()
+            if user_info:
+                self.user_id = user_info["id"]
+                print(f"Logged in as {username} (ID: {self.user_id})")
+                return True
+            return False
         else:
             print(f"Login failed: {response.text}")
             return False
+
+    def get_current_user(self):
+        """Get current user information"""
+        response = requests.get(
+            f"{self.server_url}/users/me", headers=self.get_auth_header()
+        )
+        if response.status_code == 200:
+            return response.json()
+        return None
 
     def get_auth_header(self):
         return {"Authorization": f"{self.token_type} {self.auth_token}"}
@@ -75,6 +105,17 @@ class ChatClient:
             print(f"Failed to get online users: {response.text}")
             return []
 
+    def get_chat_history(self, peer_id):
+        """Get chat history with a specific user"""
+        response = requests.get(
+            f"{self.server_url}/users/{peer_id}/chat", headers=self.get_auth_header()
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Failed to get chat history: {response.text}")
+            return []
+
     def on_message(self, ws, message):
         """Handle incoming WebSocket messages"""
         try:
@@ -82,39 +123,42 @@ class ChatClient:
 
             if "type" in data and data["type"] == "delivery_status":
                 status = "sent" if data["delivered"] else "not sent"
-                print(f"Message to {data["recipient"]}: {status}")
+                print(f"Message to {data['recipient']['username']}: {status}")
                 return
 
             if "error" in data:
-                print(f"Error: {data["error"]}")
+                print(f"Error: {data['error']}")
                 return
 
             # handle the message
-            sender = data.get("sender")
+            sender = data.get("sender", {})
+            sender_id = sender.get("id")
+            sender_username = sender.get("username")
             content = data.get("content")
             timestamp = data.get("timestamp", datetime.now().isoformat())
+            message_number = data.get("message_number", 0)
 
             # check if secure channel / key exchange already happened
-            if sender not in self.session_keys:
-                print(f"establishing secure channel with {sender}...")
-                if not self.establish_sec_channel(sender):
-                    print(f"Could not establish secure channel with {sender}")
+            if sender_id not in self.session_keys:
+                print(f"establishing secure channel with {sender_username}...")
+                if not self.establish_sec_channel(sender_id):
+                    print(f"Could not establish secure channel with {sender_username}")
                     return
 
             try:
                 encoded_bytes = base64.b64decode(content)
 
                 # decrypt
-                decrypted_message = self.decrypt_message(sender, encoded_bytes, self.message_counters[sender])
+                decrypted_message = self.decrypt_message(sender_id, encoded_bytes, message_number)
 
                 # Check if this is a new chat
                 is_new_chat = data.get("is_new_chat", False)
                 if is_new_chat:
-                    print(f"\n🔔 New chat from {sender}!")
+                    print(f"\n🔔 New chat from {sender_username}!")
 
-                print(f"\n[{timestamp}] {sender}: {decrypted_message}")
+                print(f"\n[{timestamp}] {sender_username}: {decrypted_message}")
             except Exception as e:
-                print(f"Error decrypting message from {sender}: {e}")
+                print(f"Error decrypting message from {sender_username}: {e}")
 
         except Exception as e:
             print(f"Error processing message: {e}")
@@ -154,23 +198,36 @@ class ChatClient:
         thread.start()
         time.sleep(1)  # sleep for letting connection establish
 
-    def send_message(self, recipient, content):
+    def send_message(self, recipient_username, content):
         if not self.ws:
             print("WebSocket not connected")
             return False
 
-        if recipient not in self.session_keys:
-            print(f"Establishing secure channel with {recipient}...")
-            if not self.establish_sec_channel(recipient):
-                print(f"Could not establish secure channel with {recipient}")
+        # Find recipient's user ID from online users
+        online_users = self.get_online_users()
+        recipient = next((user for user in online_users if user["username"] == recipient_username), None)
+        
+        if not recipient:
+            print(f"User {recipient_username} not found or not online")
+            return False
+
+        recipient_id = recipient["id"]
+
+        if recipient_id not in self.session_keys:
+            print(f"Establishing secure channel with {recipient_username}...")
+            if not self.establish_sec_channel(recipient_id):
+                print(f"Could not establish secure channel with {recipient_username}")
                 return False
 
         try:
-            encrypted_content, message_number = self.encrypt_message(recipient, content)
-
+            encrypted_content, message_number = self.encrypt_message(recipient_id, content)
             encrypted_b64 = base64.b64encode(encrypted_content).decode("ascii")
 
-            message = {"recipient": recipient, "content": encrypted_b64, "message_number": message_number}
+            message = {
+                "recipient": {"id": recipient_id, "username": recipient_username},
+                "content": encrypted_b64,
+                "message_number": message_number
+            }
             self.ws.send(json.dumps(message))
             return True
         except Exception as e:
@@ -180,11 +237,15 @@ class ChatClient:
     def start(self, username, password):
         """inits everything necessary for client: dh parameters (fginite field for dh),
         public key, websocket connection"""
-        if not self.login(username, password):
+        # Try login first
+        if self.login(username, password):
+            print("Login successful")
+        else:
             print(f"Could not log in as {username}, trying to register")
             if not self.register(username, password):
                 print("Registration failed")
                 return False
+            # Try login again after registration
             if not self.login(username, password):
                 print("Login after registration failed")
                 return False
@@ -236,45 +297,49 @@ class ChatClient:
             print(f"Failed to upload public key: {response.text}")
             return False
 
-    def get_public_key_user(self, peer_username: str):
+    def get_public_key_user(self, peer_id):
         if not self.auth_token:
             print("Not authenticated")
             return False
 
         response = requests.get(
-            url=f"{self.server_url}/users/{peer_username}/public_key",
+            url=f"{self.server_url}/users/{peer_id}/public_key",
             headers=self.get_auth_header(),
         )
 
         if response.status_code == 200:
             public_key_data = response.json()
             public_key_serialized = public_key_data["public_key"].encode("utf-8")
-            public_key = crypto_utils.deserialize_pub_key(public_key_serialized)
-            return public_key
+            try:
+                public_key = crypto_utils.deserialize_pub_key(public_key_serialized, self.dh_parameters)
+                return public_key
+            except Exception as e:
+                print(f"Error deserializing public key: {e}")
+                return None
         else:
             print(f"Failed to get public key: {response.text}")
             return None
 
-    def establish_sec_channel(self, peer_username: str):
+    def establish_sec_channel(self, peer_id):
         if not self.auth_token:
             print("Not authenticated")
             return False
 
-        if peer_username in self.session_keys:
-            print(f"Session key with {peer_username} already exists")
+        if peer_id in self.session_keys:
+            print(f"Session key with peer {peer_id} already exists")
             return True
 
-        peer_pub_key = self.get_public_key_user(peer_username)
+        peer_pub_key = self.get_public_key_user(peer_id)
         if peer_pub_key is None:
-            print(f"Failed to retrieve public key for {peer_username}")
+            print(f"Failed to retrieve public key for peer {peer_id}")
             return False
 
         try:
             shared_key = crypto_utils.exchange_and_derive(self.priv_key, peer_pub_key)
             # Initialize KeyRotationManager with the initial shared key
-            self.session_keys[peer_username] = crypto_utils.KeyRotationManager(shared_key)
-            self.message_counters[peer_username] = 0
-            print(f"Secure channel established with {peer_username}")
+            self.session_keys[peer_id] = crypto_utils.KeyRotationManager(shared_key)
+            self.message_counters[peer_id] = 0
+            print(f"Secure channel established with peer {peer_id}")
             return True
         except Exception as e:
             print(f"Error establishing secure channel: {e}")
@@ -295,17 +360,17 @@ class ChatClient:
             print(f"Failed to get DH parameters: {response.text}")
             return False
 
-    def encrypt_message(self, peer_username: str, message: str) -> tuple[bytes, int]:
+    def encrypt_message(self, peer_id, message: str) -> tuple[bytes, int]:
         """
         Encrypt a message for a peer, handling key rotation.
         Returns the encrypted message and the message number.
         """
-        if peer_username not in self.session_keys:
-            if not self.establish_sec_channel(peer_username):
-                raise Exception(f"No secure channel with {peer_username}")
+        if peer_id not in self.session_keys:
+            if not self.establish_sec_channel(peer_id):
+                raise Exception(f"No secure channel with peer {peer_id}")
 
-        key_manager = self.session_keys[peer_username]
-        message_number = self.message_counters[peer_username]
+        key_manager = self.session_keys[peer_id]
+        message_number = self.message_counters[peer_id]
         
         # Get current key and encrypt
         current_key = key_manager.get_current_key()
@@ -313,19 +378,19 @@ class ChatClient:
         
         # Increment counter and rotate key if needed
         key_manager.increment_counter()
-        self.message_counters[peer_username] += 1
+        self.message_counters[peer_id] += 1
         
         return encrypted, message_number
 
-    def decrypt_message(self, peer_username: str, encrypted_message: bytes, message_number: int) -> str:
+    def decrypt_message(self, peer_id, encrypted_message: bytes, message_number: int) -> str:
         """
         Decrypt a message from a peer, handling key rotation.
         """
-        if peer_username not in self.session_keys:
-            if not self.establish_sec_channel(peer_username):
-                raise Exception(f"No secure channel with {peer_username}")
+        if peer_id not in self.session_keys:
+            if not self.establish_sec_channel(peer_id):
+                raise Exception(f"No secure channel with peer {peer_id}")
 
-        key_manager = self.session_keys[peer_username]
+        key_manager = self.session_keys[peer_id]
         
         # Get the key that was used for this message number
         key = key_manager.get_key_for_message(message_number)
@@ -336,9 +401,10 @@ class ChatClient:
 
 
 def chat_interface(client):
-    """Simple chat interface, generated with lots of help by genAI"""
+    """Simple chat interface with enhanced user information and chat history"""
     print("\n=== Chat Commands ===")
-    print("/users - List online users")
+    print("/users - List online users with chat history")
+    print("/history @username - Show chat history with a user")
     print("/quit - Exit the chat")
     print("/help - Show commands")
     print("To send a message: @username Your message here")
@@ -356,16 +422,49 @@ def chat_interface(client):
                     if users:
                         print("\nOnline users:")
                         for user in users:
-                            print(f"- {user}")
+                            status = "🟢" if user["is_online"] else "⚫"
+                            last_seen = f" (Last seen: {user['last_seen']})" if user["last_seen"] else ""
+                            print(f"{status} {user['username']}{last_seen}")
+                            
+                            # Show last message if available
+                            if user.get("last_message"):
+                                msg = user["last_message"]
+                                is_mine = "You" if msg["is_mine"] else user["username"]
+                                print(f"  Last message: {is_mine}: {msg['content']} ({msg['timestamp']})")
+                            print()
                     else:
                         print("No other users online")
+
+                elif command.startswith("history"):
+                    parts = command.split()
+                    if len(parts) != 2 or not parts[1].startswith("@"):
+                        print("Usage: /history @username")
+                        continue
+                    
+                    username = parts[1][1:]  # Remove @
+                    users = client.get_online_users()
+                    user = next((u for u in users if u["username"] == username), None)
+                    
+                    if not user:
+                        print(f"User {username} not found")
+                        continue
+                    
+                    history = client.get_chat_history(user["id"])
+                    if history:
+                        print(f"\nChat history with {username}:")
+                        for msg in history:
+                            sender = "You" if msg["sender_id"] == client.user_id else username
+                            print(f"[{msg['timestamp']}] {sender}: {msg['content']}")
+                    else:
+                        print(f"No chat history with {username}")
 
                 elif command == "quit":
                     break
 
                 elif command == "help":
                     print("\n=== Chat Commands ===")
-                    print("/users - List online users")
+                    print("/users - List online users with chat history")
+                    print("/history @username - Show chat history with a user")
                     print("/quit - Exit the chat")
                     print("/help - Show commands")
                     print("To send a message: @username Your message here")

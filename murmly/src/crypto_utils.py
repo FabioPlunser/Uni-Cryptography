@@ -1,5 +1,6 @@
 from typing import Tuple, Optional
 import os
+import json
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import dh
@@ -99,19 +100,35 @@ def decrypt(key: bytes, ct: bytes) -> str:
 
 
 def serialize_pub_key(pub_key: DHPublicKey) -> bytes:
-    """serializes public key to bytes"""
-    serialized_pub: bytes = pub_key.public_bytes(
-        encoding=Encoding.PEM,
-        format=PublicFormat.SubjectPublicKeyInfo,
-    )
+    """serializes public key to bytes in JSON format with hex string"""
+    # Get the public numbers
+    public_numbers = pub_key.public_numbers()
+    # Convert to hex string
+    y_hex = hex(public_numbers.y)[2:]  # Remove '0x' prefix
+    # Create JSON string
+    json_str = json.dumps({"y_hex": y_hex})
+    return json_str.encode('utf-8')
 
-    return serialized_pub
 
-
-def deserialize_pub_key(serialized_pub: bytes) -> DHPublicKey:
-    pub_key: DHPublicKey = load_pem_public_key(serialized_pub)
-
-    return pub_key
+def deserialize_pub_key(serialized_pub: bytes, parameters: DHParameters) -> DHPublicKey:
+    """deserializes public key from JSON format with hex string"""
+    try:
+        # Parse JSON
+        data = json.loads(serialized_pub.decode('utf-8'))
+        if 'y_hex' not in data:
+            raise ValueError("Invalid public key format: missing y_hex")
+        
+        # Convert hex string to integer
+        y = int(data['y_hex'], 16)
+        
+        # Create public numbers
+        public_numbers = dh.DHPublicNumbers(y, parameters.parameter_numbers())
+        
+        # Create public key
+        return public_numbers.public_key()
+    except Exception as e:
+        print(f"Error deserializing public key: {e}")
+        raise
 
 
 def get_dh_params_as_hex(dh_parameters_obj):
