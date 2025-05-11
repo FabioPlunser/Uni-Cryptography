@@ -21,16 +21,13 @@ function createWebSocketStore() {
       return;
     }
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-      console.log("WebSocket already open or connecting.");
       return;
     }
 
     const wsUrl = `${WS_BASE_URL}/ws/${token}`;
-    console.log(`Connecting WebSocket to ${wsUrl}`);
     const newSocket = new WebSocket(wsUrl);
 
     newSocket.onopen = () => {
-      console.log("WebSocket connection established.");
       socket = newSocket;
       reconnectAttempts = 0;
     };
@@ -38,7 +35,6 @@ function createWebSocketStore() {
     newSocket.onmessage = async (event: MessageEvent) => {
       try {
         const payload: WebSocketPayload = JSON.parse(event.data as string);
-        console.log("WebSocket message received:", payload);
 
         if (!payload.sender || !payload.content) {
           console.warn("Invalid message payload:", payload);
@@ -47,7 +43,6 @@ function createWebSocketStore() {
 
         // Ensure cryptography is initialized
         if (!cryptoStore.currentDhParams || !cryptoStore.currentUserPubKey) {
-          console.log("Initializing cryptography before processing message...");
           const initialized = await cryptoStore.initializeCryptography(authStore.current.token!);
           if (!initialized) {
             console.error("Failed to initialize cryptography");
@@ -57,25 +52,19 @@ function createWebSocketStore() {
 
         // Initialize chat with sender if it's a new chat
         if (payload.is_new_chat) {
-          console.log("New chat detected, establishing secure channel...");
           const channelReady = await cryptoStore.ensureSecureChannel(authStore.current.token!, payload.sender.id);
           if (!channelReady) {
             console.error("Failed to establish secure channel for new chat");
             return;
           }
-          console.log("Secure channel established successfully");
         }
 
         // Try to decrypt the message
-        console.log("Attempting to decrypt message...");
         const decryptedContent = await cryptoStore.decryptWSMessage(payload.sender.id, payload.content);
         if (decryptedContent === null || decryptedContent.startsWith("[Decryption Failed")) {
-          console.warn("Decryption failed for message:", payload);
-          console.log("Message content:", payload.content);
-          console.log("Sender ID:", payload.sender.id);
+          console.error("Decryption failed for message:", payload);
           return;
         }
-        console.log("Message decrypted successfully");
 
         // Add the message to the chat store
         const newMessage: Message = {
@@ -100,7 +89,7 @@ function createWebSocketStore() {
         if (payload.is_new_chat && payload.sender.id !== chatStore.current.activeChatUser?.id) {
           const audio = new Audio('/notification.mp3');
           alertStore.setAlert(`New message from ${payload.sender.username}`, "info");
-          audio.play().catch(e => console.log('Could not play notification sound:', e));
+          audio.play().catch(e => console.error('Could not play notification sound:', e));
         }
       } catch (e: any) {
         console.error("Error processing WebSocket message:", e, event.data);
@@ -108,26 +97,23 @@ function createWebSocketStore() {
       }
     };
 
-    // newSocket.onerror = (event: Event) => {
-    //   console.error("WebSocket error:", event);
-    //   errorStore.setError("WebSocket connection error occurred.", "WebSocket Error");
-    //   // Consider if retry logic should also be here or only onclose
-    // };
+    newSocket.onerror = (event: Event) => {
+      console.error("WebSocket error:", event);
+      errorStore.setError("WebSocket connection error occurred.", "WebSocket Error");
+    };
 
-    // newSocket.onclose = (event: CloseEvent) => {
-    //   console.log(`WebSocket connection closed: Code ${event.code}, Reason: ${event.reason}`);
-    //   socket = null;
-    //   if (authStore.current.isAuthenticated && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-    //     reconnectAttempts++;
-    //     console.log(`Attempting to reconnect WebSocket (attempt ${reconnectAttempts})...`);
-    //     setTimeout(connect, RECONNECT_DELAY * reconnectAttempts);
-    //   } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    //     errorStore.setError("WebSocket disconnected after multiple retries. Please check your connection or log in again.", "WebSocket Error");
-    //   }
-    // };
+    newSocket.onclose = (event: CloseEvent) => {
+      socket = null;
+      if (authStore.current.isAuthenticated && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        setTimeout(connect, RECONNECT_DELAY * reconnectAttempts);
+      } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        errorStore.setError("WebSocket disconnected after multiple retries. Please check your connection or log in again.", "WebSocket Error");
+      }
+    };
   }
 
-  async function sendMessage(recipient: User, sender: User, plainTextContent: string) {
+  async function sendMessage(recipient: onlineUser, sender: User, plainTextContent: string) {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       errorStore.setError("WebSocket not connected. Cannot send message.", "WebSocket Error");
       return false;
@@ -160,7 +146,6 @@ function createWebSocketStore() {
 
     try {
       socket.send(JSON.stringify(payload));
-      console.log("WebSocket message sent:", payload);
 
       // Optimistically add to chatStore (or let server confirm, then add)
       // For optimistic UI, we need a timestamp that will match server's delivery status
@@ -190,7 +175,6 @@ function createWebSocketStore() {
 
   function disconnect() {
     if (socket) {
-      console.log("Disconnecting WebSocket.");
       reconnectAttempts = MAX_RECONNECT_ATTEMPTS; // Prevent auto-reconnect on manual disconnect
       socket.close();
       socket = null;

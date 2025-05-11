@@ -101,7 +101,6 @@ export async function deriveSharedSecret(
 ): Promise<CryptoKey> {
   // Shared secret: (peer_pub_key.y ^ my_priv_key.x) mod p
   const sharedSecretBigInt = power(peerPubKey.y, privKey.x, privKey.params.p);
-  console.log("Derived shared secret (BigInt):", sharedSecretBigInt.toString(16));
 
   // Convert BigInt shared secret to ArrayBuffer
   let hex = sharedSecretBigInt.toString(16);
@@ -130,7 +129,6 @@ export async function deriveSharedSecret(
     false,
     ["encrypt", "decrypt"]
   );
-  console.log("Successfully derived AES-GCM key");
   return derivedKey;
 }
 
@@ -163,14 +161,9 @@ export async function decryptMessage(
   base64IvAndCiphertext: string
 ): Promise<string> {
   try {
-    console.log("Starting decryption of message:", base64IvAndCiphertext);
 
     // Log the base64 string characteristics
-    console.log("Base64 string length:", base64IvAndCiphertext.length);
-    console.log("Base64 string pattern check:", base64IvAndCiphertext.match(/^[A-Za-z0-9+/=]+$/) ? "Valid base64" : "Invalid base64 chars");
-
     const ivAndCiphertext = new Uint8Array(base64ToArrayBuffer(base64IvAndCiphertext));
-    console.log("Decoded message length:", ivAndCiphertext.length);
 
     if (ivAndCiphertext.length <= AES_IV_LENGTH) {
       throw new Error(`Message too short: ${ivAndCiphertext.length} bytes (need more than IV length of ${AES_IV_LENGTH})`);
@@ -179,23 +172,18 @@ export async function decryptMessage(
     // Extract IV and ciphertext
     const iv = ivAndCiphertext.slice(0, AES_IV_LENGTH);
     const ciphertext = ivAndCiphertext.slice(AES_IV_LENGTH);
-    console.log("IV length:", iv.length, "Ciphertext length:", ciphertext.length);
-    console.log("IV (hex):", Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''));
 
     if (ciphertext.length === 0) {
       throw new Error("Ciphertext is empty after IV extraction");
     }
 
-    console.log("Attempting decrypt with Web Crypto API...");
     const decryptedBuffer = await window.crypto.subtle.decrypt(
       { name: "AES-GCM", iv: iv },
       aesKey,
       ciphertext
     );
-    console.log("Decryption successful, buffer size:", decryptedBuffer.byteLength);
 
     const decoded = new TextDecoder().decode(decryptedBuffer);
-    console.log("Decoded message:", decoded);
     return decoded;
   } catch (error) {
     console.error("Decryption error details:", {

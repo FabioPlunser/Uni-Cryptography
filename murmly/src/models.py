@@ -47,6 +47,7 @@ class Message(Base):
     content = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
     is_read = Column(Boolean, default=False)
+    message_number = Column(Integer, default=0)
 
     # Relationships
     sender = relationship(
@@ -89,7 +90,9 @@ class UserBase(BaseModel):
     last_message: Optional[LastMessage] = None
 
 
-class UserCreate(UserBase):
+
+class UserCreate(BaseModel):
+    username: str
     password: str
 
 

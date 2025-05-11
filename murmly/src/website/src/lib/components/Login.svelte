@@ -1,7 +1,5 @@
 <script lang="ts">
   import { authStore } from "$lib/stores/auth.svelte";
-  import { cryptoStore } from "$lib/stores/crypto.svelte";
-  import { errorStore } from "$lib/stores/error.svelte";
 
   async function handleSubmit(event) {
     event.preventDefault();

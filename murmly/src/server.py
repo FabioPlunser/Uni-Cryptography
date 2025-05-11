@@ -50,21 +50,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Murmly Chat API", lifespan=lifespan)
 
-# Mount the SvelteKit build output
-if os.path.exists("website/build"):
-    app.mount("/", StaticFiles(directory="website/build", html=True), name="static")
-
-# Add a catch-all route to serve index.html for client-side routing
-@app.get("/{full_path:path}")
-async def serve_spa(full_path: str):
-    if os.path.exists("website/build"):
-        return FileResponse("website/build/index.html")
-    raise HTTPException(status_code=404, detail="Not found")
 
 # Keep your existing CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your actual frontend domain
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -88,7 +78,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-@app.post("/register", response_model=UserBase)
+@app.post("/register")
 async def register_user(user: UserCreate):
     """Register a new user and return access token"""
     logger.info(f"Registering user: {user}")
@@ -284,7 +274,7 @@ async def websocket_endpoint(token: str, websocket: WebSocket):
                 continue
 
             # Create message in database with message number
-            message = await db.create_message(user, recipient_user, content)
+            message = await db.create_message(user, recipient_user, content, message_number)
             logger.info(f"Message created: {message}")
             # Update or create chat records for both users
             await db.update_user_chat(user.id, recipient_user.id, message.id)
@@ -341,6 +331,7 @@ async def get_online_users(current_user: User = Depends(get_current_user)):
         chat_info = next((chat for chat in user_chats if chat.peer_id == user.id), None)
         last_message = chat_info.last_message if chat_info else None
         
+        logger.info(f"Chat info: {chat_info}")
         users_with_chat_info.append({
             "id": user.id,
             "username": user.username,
@@ -350,7 +341,7 @@ async def get_online_users(current_user: User = Depends(get_current_user)):
                 "content": last_message.content if last_message else None,
                 "timestamp": last_message.timestamp.isoformat() if last_message else None,
                 "is_mine": last_message.sender_id == current_user.id if last_message else None
-            } if last_message else None
+            } if last_message else None,
         })
     
     return users_with_chat_info
@@ -363,7 +354,25 @@ async def get_chat_history(
 ):
     """Get chat history between current user and specified user"""
     messages = await db.get_chat_history(current_user.id, user_id)
-    return messages
+    messages_new = [
+        {
+            "id": message.id,
+            "content": message.content,
+            "timestamp": message.timestamp.isoformat(),
+            "sender": {
+                "id": message.sender_id,
+                "username": message.sender.username
+            },
+            "recipient": {
+                "id": message.recipient_id,
+                "username": message.recipient.username
+            },
+            "isMine": message.sender_id == current_user.id,
+            "message_number": message.message_number  # Include message number in response
+        }
+        for message in messages
+    ]
+    return messages_new
 
 
 @app.post("/users/ping")
@@ -402,3 +411,16 @@ async def logout(current_user=Depends(get_current_user)):
     await db.set_user_online_status(current_user, False)
 
     return {"status": "success"}
+
+# Mount the SvelteKit build output
+if os.path.exists("website/build"):
+    app.mount("/", StaticFiles(directory="website/build", html=True), name="static")
+else:
+    logger.warning("SvelteKit build directory 'website/build' not found. Static files will not be served.") 
+
+# Add a catch-all route to serve index.html for client-side routing
+# @app.get("/{full_path:path}", include_in_schema=False)
+# async def serve_spa(full_path: str):
+#     if os.path.exists("website/build"):
+#         return FileResponse("website/build/index.html")
+#     raise HTTPException(status_code=404, detail="Not found")

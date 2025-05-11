@@ -197,6 +197,7 @@ class Database:
         sender_username: User,
         recipient_username: User,
         content: str,
+        message_number: int = 0,
     ) -> Optional[Message]:
         """Stores an encrypted message, looking up user IDs first."""
         async with self.async_session_factory() as session:
@@ -205,6 +206,7 @@ class Database:
                     sender_id=sender_username.id,
                     recipient_id=recipient_username.id,
                     content=content,
+                    message_number=message_number,
                 )
                 session.add(message)
                 await session.flush()
@@ -250,6 +252,8 @@ class Database:
         async with self.async_session_factory() as session:
             result = await session.execute(
                 select(Message)
+                .options(selectinload(Message.sender))
+                .options(selectinload(Message.recipient))
                 .where(
                     or_(
                         and_(Message.sender_id == user_id, Message.recipient_id == peer_id),
