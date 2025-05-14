@@ -207,7 +207,8 @@ class KeyRotationManager:
         """
         self.message_counter += 1
         if self.message_counter >= self.ROTATION_THRESHOLD:
-            self.rotate_key()
+            # TODO: fix this! isnt working right now because of undeterministic salt
+            # self.rotate_key()
             return True
         return False
 
