@@ -23,6 +23,18 @@ declare global {
 		token: string;
 	}
 
+	export interface onlineUser {
+		id: number;
+		username: string;
+		is_online: boolean;
+		last_seen: string;
+		last_message: {
+			content: string;
+			timestamp: string;
+			is_mine: boolean;
+		}
+	}
+
 	export interface Token {
 		access_token: string;
 		token_type: string;
@@ -47,19 +59,20 @@ declare global {
 
 	export interface Message {
 		id?: string;
-		sender: User;
-		recipient: User;
+		sender: User | onlineUser;
+		recipient: User | onlineUser;
 		content: string;
 		timestamp: string;
 		isMine: boolean;
 		delivered?: boolean;
 		type?: "incoming" | "outgoing" | "status" | "error";
+		message_number?: number;
 	}
 
 	export interface WebSocketPayload {
 		type?: "delivery_status";
-		sender?: User;
-		recipient: User;
+		sender?: User | onlineUser;
+		recipient: User | onlineUser;
 		content?: string;
 		timestamp: string;
 		delivered?: boolean;
@@ -76,6 +89,12 @@ declare global {
 		delivered?: boolean;
 		error?: string;
 	}
+
+	export interface PublicKeyResponse {
+		username: string;
+		public_key: string;
+	}
+
 }
 
 export { };

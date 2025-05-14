@@ -1,6 +1,8 @@
 import { errorStore } from "./error.svelte";
 import { authStore } from "./auth.svelte";
 
+const ROTATION_THRESHOLD = 10;
+
 import {
   type DHParameters,
   type DHPublicKey,
@@ -16,14 +18,17 @@ import {
   deserializeDhPrivateKey,
 } from "$lib/crypto";
 
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Get API URL from environment, fallback to relative path in production
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface CryptoState {
   dhParams: DHParameters | null;
   myDhPrivateKey: DHPrivateKey | null;
   myDhPublicKey: DHPublicKey | null;
   peerSharedSecrets: Map<number, CryptoKey>;
+  peerMessageNumbers: Map<number, number>;
+  peerSharedSecretHistory: Map<number, Map<number, CryptoKey>>;
+  peerKeyRotation: Map<number, { currentKey: CryptoKey, keyHistory: Map<number, CryptoKey>, messageCounter: number }>;
 }
 
 function createCryptoStore() {
@@ -31,53 +36,11 @@ function createCryptoStore() {
     dhParams: null,
     myDhPrivateKey: null,
     myDhPublicKey: null,
-    peerSharedSecrets: new Map()
+    peerSharedSecrets: new Map(),
+    peerMessageNumbers: new Map(),
+    peerSharedSecretHistory: new Map(),
+    peerKeyRotation: new Map()
   });
-
-  // Load shared state from localStorage
-  function loadSharedState() {
-    try {
-      const storedParams = localStorage.getItem('dhParams');
-      if (storedParams) {
-        state.dhParams = deserializeDhParameters(storedParams);
-      }
-
-      const storedPubKey = localStorage.getItem('dhPublicKey');
-      if (storedPubKey && state.dhParams) {
-        state.myDhPublicKey = deserializeDhPublicKey(storedPubKey, state.dhParams);
-      }
-    } catch (e) {
-      console.error('Error loading shared crypto state:', e);
-    }
-  }
-
-  // Save shared state to localStorage
-  function saveSharedState() {
-    try {
-      if (state.dhParams) {
-        localStorage.setItem('dhParams', JSON.stringify({
-          p_hex: state.dhParams.p.toString(16),
-          g_hex: state.dhParams.g.toString(16)
-        }));
-      }
-
-      if (state.myDhPublicKey) {
-        localStorage.setItem('dhPublicKey', serializeDhPublicKey(state.myDhPublicKey));
-      }
-    } catch (e) {
-      console.error('Error saving shared crypto state:', e);
-    }
-  }
-
-  // Listen for storage events from other tabs
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'dhParams' || e.key === 'dhPublicKey') {
-      loadSharedState();
-    }
-  });
-
-  // Initial load of shared state
-  loadSharedState();
 
   /**
    * Fetches the DH parameters from the server.
@@ -92,8 +55,6 @@ function createCryptoStore() {
       }
       const paramsJson = await response.json();
       state.dhParams = deserializeDhParameters(JSON.stringify(paramsJson));
-      saveSharedState(); // Save to localStorage
-      console.log("DH parameters fetched and deserialized:", state.dhParams);
       return true;
     } catch (e: any) {
       errorStore.setError(`DH Params Load: ${e.message}`, 400);
@@ -115,8 +76,6 @@ function createCryptoStore() {
       const { privKey, pubKey } = generateDhKeyPair(state.dhParams);
       state.myDhPrivateKey = privKey;
       state.myDhPublicKey = pubKey;
-      saveSharedState(); // Save to localStorage
-      console.log("User DH key pair generated.");
       return true;
     } catch (e: any) {
       errorStore.setError(`User DH key generation failed: ${e.message}`, 400);
@@ -149,7 +108,6 @@ function createCryptoStore() {
         const err = await response.json();
         throw new Error(err.detail || "Failed to upload public key");
       }
-      console.log("User public key uploaded successfully.");
       return true;
     } catch (e: any) {
       errorStore.setError(`Upload Public Key: ${e.message}`, "Crypto Error");
@@ -164,11 +122,9 @@ function createCryptoStore() {
    * @returns A promise that resolves to true if the cryptography is initialized successfully, or false otherwise.
    */
   async function initializeCryptography(token: string): Promise<boolean> {
-    console.log("Initializing cryptography with custom DH...");
     if (!await fetchDHParametersFromServer()) return false;
     if (!generateUserDhKeys()) return false;
     if (!await uploadPublicKey(token)) return false;
-    console.log("Custom cryptography initialized successfully.");
     return true;
   }
 
@@ -228,8 +184,7 @@ function createCryptoStore() {
 
     try {
       // If we don't have a shared secret, establish one
-      if (!state.peerSharedSecrets.has(peerUserId)) {
-        console.log(`No shared secret found for peer ${peerUserId}. Establishing now.`);
+      if (!state.peerKeyRotation.has(peerUserId)) {
         if (!state.myDhPrivateKey) {
           errorStore.setError('Own private key missing when trying to establish initial secret.', 'Crypto Error');
           console.error("CRITICAL: Own private key is null in ensureSecureChannel when trying to derive initial secret.");
@@ -239,9 +194,27 @@ function createCryptoStore() {
         const peerPubKey = await fetchPeerPublicKey(token, peerUserId);
         // Derive shared secret using THIS client's CURRENT private key and peer's public key
         const sessionKey = await deriveSharedSecretUtil(state.myDhPrivateKey, peerPubKey);
-        state.peerSharedSecrets.set(peerUserId, sessionKey);
-        console.log(`Shared secret established with peer ${peerUserId} using current keys.`);
+        state.peerKeyRotation.set(peerUserId, {
+          currentKey: sessionKey,
+          keyHistory: new Map(),
+          messageCounter: 0
+        });
+
+        // Initialize message number tracking if not exists
+        if (!state.peerMessageNumbers.has(peerUserId)) {
+          state.peerMessageNumbers.set(peerUserId, 0);
+        }
+
+        // Initialize shared secret history if not exists
+        if (!state.peerSharedSecretHistory.has(peerUserId)) {
+          state.peerSharedSecretHistory.set(peerUserId, new Map());
+        }
+
+        // Store the current shared secret in history with current message number
+        const currentMsgNum = state.peerMessageNumbers.get(peerUserId) || 0;
+        state.peerSharedSecretHistory.get(peerUserId)?.set(currentMsgNum, sessionKey);
       }
+      console.log("Secure channel established with", peerUserId, state.peerKeyRotation.get(peerUserId)?.currentKey);
       return true;
     } catch (error: any) {
       errorStore.setError(`Failed to establish secure channel with ${peerUserId}: ${error.message}`, 'Crypto Error');
@@ -274,37 +247,101 @@ function createCryptoStore() {
     return deserializeDhPublicKey(peerKeyResponse.public_key, state.dhParams);
   }
 
+  async function deriveNextKey(currentKey: CryptoKey) {
+    const salt = window.crypto.getRandomValues(new Uint8Array(32));
+    // Derive a new key using HKDF
+    return await window.crypto.subtle.deriveKey(
+      {
+        name: "HKDF",
+        salt,
+        info: new TextEncoder().encode("key-rotation"),
+        hash: "SHA-256",
+      },
+      currentKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+
   function reset() {
     state.dhParams = null;
     state.myDhPrivateKey = null;
     state.myDhPublicKey = null;
     state.peerSharedSecrets = new Map();
+    state.peerMessageNumbers = new Map();
+    state.peerSharedSecretHistory = new Map();
   }
 
+  /**
+   * Encrypts a message using the shared secret for a peer user.
+   * @param peerUserId - The ID of the peer user.
+   * @param message - The message to encrypt.
+   * @returns A promise that resolves to the encrypted message as a base64 string.
+   */
   async function encryptWSMessage(peerUserId: number, message: string): Promise<string> {
-    const aesKey = state.peerSharedSecrets.get(peerUserId);
-    if (!aesKey) {
+    let peerData = state.peerKeyRotation.get(peerUserId);
+    if (!peerData) {
       errorStore.setError(`No shared secret found for peer ${peerUserId}. Cannot encrypt message.`, 'Crypto Error');
-      return '';
+      peerData = {
+        currentKey: state.peerSharedSecrets.get(peerUserId)!,
+        keyHistory: new Map(),
+        messageCounter: 0
+      };
+      state.peerKeyRotation.set(peerUserId, peerData);
     }
 
     try {
-      return encryptMessage(aesKey, message);
+      // Increment message number for this peer
+      const currentMsgNum = state.peerMessageNumbers.get(peerUserId) || 0;
+      state.peerMessageNumbers.set(peerUserId, currentMsgNum + 1);
+
+      // Store the current shared secret in history
+      if (!state.peerSharedSecretHistory.has(peerUserId)) {
+        state.peerSharedSecretHistory.set(peerUserId, new Map());
+      }
+      state.peerSharedSecretHistory.get(peerUserId)?.set(currentMsgNum, peerData.currentKey);
+
+      peerData.messageCounter++;
+      if (peerData.messageCounter % ROTATION_THRESHOLD === 0) {
+        const aesKey = await deriveNextKey(peerData.currentKey);
+        peerData.currentKey = aesKey;
+        peerData.keyHistory.set(peerData.messageCounter, aesKey);
+      }
+      return encryptMessage(peerData.currentKey, message);
     } catch (e: any) {
       errorStore.setError(`Failed to encrypt message: ${e.message}`, 'Crypto Error');
       return '';
     }
   }
 
-  async function decryptWSMessage(peerUserId: number, message: string): Promise<string> {
-    const aesKey = state.peerSharedSecrets.get(peerUserId);
-    if (!aesKey) {
+  /**
+   * Decrypts a message using the shared secret for a peer user.
+   * @param peerUserId - The ID of the peer user.
+   * @param message - The message to decrypt.
+   * @param messageNumber - The message number of the message to decrypt.
+   * @returns A promise that resolves to the decrypted message as a string.
+   */
+  async function decryptWSMessage(peerUserId: number, message: string, messageNumber?: number): Promise<string> {
+    let peerData = state.peerKeyRotation.get(peerUserId);
+    if (!peerData) {
       errorStore.setError(`No shared secret found for peer ${peerUserId}. Cannot decrypt message.`, 'Crypto Error');
       return '';
     }
 
+    const key = messageNumber !== undefined
+      ? peerData.keyHistory.get(messageNumber)
+      : peerData.currentKey;
+
+    if (!key) {
+      errorStore.setError(`No shared secret found for peer ${peerUserId}. Cannot decrypt message.`, 'Crypto Error');
+      return '';
+    }
+
+    console.log("Decrypting message with key:", key);
+
     try {
-      return decryptMessage(aesKey, message);
+      return decryptMessage(key, message);
     } catch (e: any) {
       errorStore.setError(`Failed to decrypt message: ${e.message}`, 'Crypto Error');
       return '';

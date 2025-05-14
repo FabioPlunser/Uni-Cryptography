@@ -5,8 +5,6 @@
   import { authStore } from "$lib/stores/auth.svelte";
   import { alertStore } from "$lib/stores/alert.svelte";
   import { fade, fly } from "svelte/transition";
-
-  $inspect(errorStore.current);
 </script>
 
 {#if errorStore.hasError()}

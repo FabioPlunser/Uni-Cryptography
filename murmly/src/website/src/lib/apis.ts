@@ -8,7 +8,6 @@ export async function registerUser(username: string, password: string): Promise<
     username: username,
     password: password,
   };
-  console.log("Registering user:", userData);
 
   const response = await fetch(`${API_URL}/register`, {
     method: "POST",
@@ -40,7 +39,6 @@ export async function loginForToken(
     throw new Error("Login failed");
   }
 
-  console.log("Token response:", data);
   return data;
 }
 
@@ -75,7 +73,7 @@ export async function updateUserPublicKey(
   return response.json();
 }
 
-export async function getOnlineUsers(token: string): Promise<User[]> {
+export async function getOnlineUsers(token: string): Promise<onlineUser[]> {
   const response = await fetch(`${API_URL}/users/online`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -113,4 +111,19 @@ export async function getPeerPublicKey(
   }
   const data = await response.json();
   return data;
-}   
+}
+
+
+export async function getChatHistory(
+  user_id: number,
+  token: string
+): Promise<Message[]> {
+  const response = await fetch(`${API_URL}/users/${user_id}/chat`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    errorStore.setError(errorData.detail, response.status);
+  }
+  return response.json();
+}

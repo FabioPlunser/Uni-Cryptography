@@ -5,8 +5,10 @@
   import { chatStore } from "$lib/stores/chat.svelte";
   import { authStore } from "$lib/stores/auth.svelte";
   import { websocketStore } from "$lib/stores/websocket.svelte";
-
+  import { fade, fly } from "svelte/transition";
+  import Bubble from "$lib/components/Bubble.svelte";
   let messageInput = $state("");
+  let messageContainerElement = $state<HTMLDivElement | null>(null);
 
   // Use derived state from chatStore for active user and their messages
   let activeChatUser = $derived(chatStore.current.activeChatUser);
@@ -14,7 +16,6 @@
   let onlineUsers = $derived(chatStore.current.onlineUsers);
   let currentUser = $derived(authStore.current.username);
   let newChats = $derived(chatStore.current.newChats);
-  $inspect(messagesForActiveUser);
 
   onMount(() => {
     if (authStore.current.token) {
@@ -59,23 +60,23 @@
     authStore.logout();
   }
 
-  async function selectUser(user: User) {
-    chatStore.setActiveChatUser(user);
-    await cryptoStore.initializeChat(user.id);
+  async function selectUser(selectedUser: onlineUser) {
+    chatStore.setActiveChatUser(selectedUser);
+    // await chatStore.fetchChatHistory(authStore.current.token, selectedUser);
   }
 
   // Auto-scroll to bottom of messages
-  // $effect(() => {
-  //   if (messagesForActiveUser && messageContainerElement) {
-  //     // Timeout to allow DOM to update before scrolling
-  //     setTimeout(() => {
-  //       if (messageContainerElement) {
-  //         messageContainerElement.scrollTop =
-  //           messageContainerElement.scrollHeight;
-  //       }
-  //     }, 50);
-  //   }
-  // });
+  $effect(() => {
+    if (messagesForActiveUser && messageContainerElement) {
+      // Timeout to allow DOM to update before scrolling
+      setTimeout(() => {
+        if (messageContainerElement) {
+          messageContainerElement.scrollTop =
+            messageContainerElement.scrollHeight;
+        }
+      }, 50);
+    }
+  });
 </script>
 
 <div
@@ -114,7 +115,7 @@
               <li>
                 <button
                   class="card rounded-sm bg-gray-800 shadow-xml justify-start w-full text-left text-base-content hover:bg-base-300 relative
-                  {activeChatUser === user
+                  {activeChatUser?.id === user.id
                     ? 'bg-primary text-primary-content'
                     : ''}"
                   onclick={() => selectUser(user)}
@@ -138,23 +139,12 @@
             Chat with: <span class="text-accent">{activeChatUser.username}</span
             >
           </h2>
-          <div class="flex-1 overflow-y-auto mb-4 space-y-4 pr-2">
+          <div
+            bind:this={messageContainerElement}
+            class="flex-1 overflow-y-auto mb-4 space-y-4 pr-2"
+          >
             {#each messagesForActiveUser as msg (msg.id)}
-              <div class="chat {msg.isMine ? 'chat-end' : 'chat-start'}">
-                <div
-                  class="chat-bubble {msg.isMine
-                    ? 'chat-bubble-primary'
-                    : 'chat-bubble-secondary'}"
-                >
-                  {@html msg.content.replace(/\n/g, "<br>")}
-                </div>
-                <div class="chat-footer opacity-50 text-xs mt-1">
-                  {new Date(msg.timestamp).toLocaleTimeString()}
-                  {#if msg.isMine && msg.delivered !== undefined}
-                    <span class="ml-2">{msg.delivered ? "✓✓" : "✓"}</span>
-                  {/if}
-                </div>
-              </div>
+              <Bubble {msg} />
             {:else}
               <div class="flex items-center justify-center h-full">
                 <p class="text-neutral-content opacity-70">

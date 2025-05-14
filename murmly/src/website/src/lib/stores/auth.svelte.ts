@@ -63,7 +63,6 @@ function createAuthStore() {
       state.username = username;
       state.isAuthenticated = true;
 
-      console.log("Initializing cryptography after login...");
       const cryptoInitialized = await cryptoStore.initializeCryptography(data.access_token);
       if (!cryptoInitialized) {
         throw new Error("Failed to initialize cryptography");
@@ -80,8 +79,8 @@ function createAuthStore() {
       errorStore.setError(e.message, 401);
       console.error("Login error:", e);
       state.isAuthenticated = false;
-      state.token = null;
-      state.username = null;
+      state.token = "";
+      state.username = "";
       return false;
     }
   }
@@ -96,8 +95,8 @@ function createAuthStore() {
   }
 
   function logout() {
-    state.token = null;
-    state.username = null;
+    state.token = "";
+    state.username = "";
     state.isAuthenticated = false;
     websocketStore.disconnect();
     cryptoStore.reset();
