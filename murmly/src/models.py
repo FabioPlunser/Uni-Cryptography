@@ -17,7 +17,7 @@ from typing import Optional
 Base = declarative_base()
 
 
-class User(Base):  
+class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -35,7 +35,9 @@ class User(Base):
         back_populates="recipient",
         foreign_keys="Message.recipient_id",
     )
-    chats = relationship("UserChat", back_populates="user", foreign_keys="UserChat.user_id")
+    chats = relationship(
+        "UserChat", back_populates="user", foreign_keys="UserChat.user_id"
+    )
 
 
 class Message(Base):
@@ -64,9 +66,7 @@ class UserChat(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     peer_id = Column(Integer, ForeignKey("users.id"))
-    last_message_id = Column(
-        Integer, ForeignKey("messages.id"), nullable=True
-    )
+    last_message_id = Column(Integer, ForeignKey("messages.id"), nullable=True)
     last_interaction = Column(DateTime, default=datetime.utcnow)
 
     # Relationships (commented out as in original)
@@ -81,14 +81,14 @@ class LastMessage(BaseModel):
     timestamp: datetime
     is_mine: bool
 
+
 class UserBase(BaseModel):
     id: int
     username: str
-    is_online: bool
+    is_online: bool = False
     last_seen: Optional[datetime] = None
-    has_chat: Optional[bool] = None 
+    has_chat: Optional[bool] = None
     last_message: Optional[LastMessage] = None
-
 
 
 class UserCreate(BaseModel):
@@ -123,7 +123,7 @@ class MessageSchema(BaseModel):
     sender: str
     recipient: str
     content: str
-    timestamp: Optional[datetime] = None # Changed to datetime for consistency
+    timestamp: Optional[datetime] = None  # Changed to datetime for consistency
 
     class Config:
-        orm_mode = True # or from_attributes = True for Pydantic v2
+        orm_mode = True  # or from_attributes = True for Pydantic v2

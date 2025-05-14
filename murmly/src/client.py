@@ -26,9 +26,10 @@ class ChatClient:
         # encryption related stuff
         self.priv_key = None
         self.pub_key = None
-        self.session_keys = {}  # user_id -> KeyRotationManager
-        self.message_counters = {}  # user_id -> message counter
+        self.session_keys = {}
+        self.message_counters = {}
         self.dh_parameters = None
+        self.online_users = []
 
     def hash_password(self, password):
         """Hash password using SHA-256 and convert to base64, matching website implementation"""
@@ -37,7 +38,7 @@ class ChatClient:
         # Get bytes
         hash_bytes = hash_obj.digest()
         # Convert to base64
-        return base64.b64encode(hash_bytes).decode('ascii')
+        return base64.b64encode(hash_bytes).decode("ascii")
 
     def register(self, username, password):
         hashed_password = self.hash_password(password)
@@ -47,7 +48,7 @@ class ChatClient:
             "id": 0,  # This will be assigned by the server
             "is_online": False,
             "last_seen": datetime.now(timezone.utc).isoformat(),
-            "has_chat": False
+            "has_chat": False,
         }
         response = requests.post(f"{self.server_url}/register", json=json_data)
         if response.status_code == 200:
@@ -60,17 +61,14 @@ class ChatClient:
 
     def login(self, username, password):
         hashed_password = self.hash_password(password)
-        data = {
-            "username": username, 
-            "password": hashed_password
-        }
+        data = {"username": username, "password": hashed_password}
         response = requests.post(f"{self.server_url}/token", data=data)
         if response.status_code == 200:
             token_data = response.json()
             self.auth_token = token_data["access_token"]
             self.token_type = token_data["token_type"]
             self.username = username
-            
+
             # Get user info to set user_id
             user_info = self.get_current_user()
             if user_info:
@@ -100,6 +98,7 @@ class ChatClient:
         )
         if response.status_code == 200:
             users = response.json()
+            self.online_users = users
             return users
         else:
             print(f"Failed to get online users: {response.text}")
@@ -149,7 +148,9 @@ class ChatClient:
                 encoded_bytes = base64.b64decode(content)
 
                 # decrypt
-                decrypted_message = self.decrypt_message(sender_id, encoded_bytes, message_number)
+                decrypted_message = self.decrypt_message(
+                    sender_id, encoded_bytes, message_number
+                )
 
                 # Check if this is a new chat
                 is_new_chat = data.get("is_new_chat", False)
@@ -199,14 +200,18 @@ class ChatClient:
         time.sleep(1)  # sleep for letting connection establish
 
     def send_message(self, recipient_username, content):
+        """Send a message to a recipient"""
         if not self.ws:
             print("WebSocket not connected")
             return False
 
         # Find recipient's user ID from online users
         online_users = self.get_online_users()
-        recipient = next((user for user in online_users if user["username"] == recipient_username), None)
-        
+        recipient = next(
+            (user for user in online_users if user["username"] == recipient_username),
+            None,
+        )
+
         if not recipient:
             print(f"User {recipient_username} not found or not online")
             return False
@@ -220,13 +225,15 @@ class ChatClient:
                 return False
 
         try:
-            encrypted_content, message_number = self.encrypt_message(recipient_id, content)
+            encrypted_content, message_number = self.encrypt_message(
+                recipient_id, content
+            )
             encrypted_b64 = base64.b64encode(encrypted_content).decode("ascii")
 
             message = {
                 "recipient": {"id": recipient_id, "username": recipient_username},
                 "content": encrypted_b64,
-                "message_number": message_number
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             self.ws.send(json.dumps(message))
             return True
@@ -258,7 +265,7 @@ class ChatClient:
         k_pair = crypto_utils.generate_pair(self.dh_parameters)
         self.priv_key = k_pair[0]
         self.pub_key = k_pair[1]
-        self.upload_public_key()
+        self.update_public_key()
 
         self.connect_websocket()
         return True
@@ -274,7 +281,7 @@ class ChatClient:
     # --------------------------
     # crypto stuff
 
-    def upload_public_key(self):
+    def update_public_key(self):
         if not self.auth_token:
             print("Not authenticated")
             return False
@@ -285,7 +292,7 @@ class ChatClient:
         send_json = {"public_key": pub_key_serialized_str}
 
         response = requests.put(
-            url=f"{self.server_url}/upload_public_key",
+            url=f"{self.server_url}/update_public_key",
             json=send_json,  # no need to conver to json, as fastapi does this autmatically (spring boot ptsd :/)
             headers=self.get_auth_header(),
         )
@@ -311,7 +318,9 @@ class ChatClient:
             public_key_data = response.json()
             public_key_serialized = public_key_data["public_key"].encode("utf-8")
             try:
-                public_key = crypto_utils.deserialize_pub_key(public_key_serialized, self.dh_parameters)
+                public_key = crypto_utils.deserialize_pub_key(
+                    public_key_serialized, self.dh_parameters
+                )
                 return public_key
             except Exception as e:
                 print(f"Error deserializing public key: {e}")
@@ -371,18 +380,20 @@ class ChatClient:
 
         key_manager = self.session_keys[peer_id]
         message_number = self.message_counters[peer_id]
-        
+
         # Get current key and encrypt
         current_key = key_manager.get_current_key()
         encrypted = crypto_utils.encrypt(current_key, message)
-        
+
         # Increment counter and rotate key if needed
         key_manager.increment_counter()
         self.message_counters[peer_id] += 1
-        
+
         return encrypted, message_number
 
-    def decrypt_message(self, peer_id, encrypted_message: bytes, message_number: int) -> str:
+    def decrypt_message(
+        self, peer_id, encrypted_message: bytes, message_number: int
+    ) -> str:
         """
         Decrypt a message from a peer, handling key rotation.
         """
@@ -391,16 +402,19 @@ class ChatClient:
                 raise Exception(f"No secure channel with peer {peer_id}")
 
         key_manager = self.session_keys[peer_id]
-        
+
         # Get the key that was used for this message number
         key = key_manager.get_key_for_message(message_number)
-        
+
         # Decrypt using the appropriate key
         decrypted = crypto_utils.decrypt(key, encrypted_message)
-        return decrypted.decode('utf-8')
+        if isinstance(decrypted, str):
+            return decrypted
+
+        return decrypted.decode("utf-8")
 
 
-def chat_interface(client):
+def chat_interface(client: ChatClient):
     """Simple chat interface with enhanced user information and chat history"""
     print("\n=== Chat Commands ===")
     print("/users - List online users with chat history")
@@ -423,14 +437,20 @@ def chat_interface(client):
                         print("\nOnline users:")
                         for user in users:
                             status = "🟢" if user["is_online"] else "⚫"
-                            last_seen = f" (Last seen: {user['last_seen']})" if user["last_seen"] else ""
+                            last_seen = (
+                                f" (Last seen: {user['last_seen']})"
+                                if user["last_seen"]
+                                else ""
+                            )
                             print(f"{status} {user['username']}{last_seen}")
-                            
+
                             # Show last message if available
                             if user.get("last_message"):
                                 msg = user["last_message"]
                                 is_mine = "You" if msg["is_mine"] else user["username"]
-                                print(f"  Last message: {is_mine}: {msg['content']} ({msg['timestamp']})")
+                                print(
+                                    f"  Last message: {is_mine}: {msg['content']} ({msg['timestamp']})"
+                                )
                             print()
                     else:
                         print("No other users online")
@@ -440,20 +460,24 @@ def chat_interface(client):
                     if len(parts) != 2 or not parts[1].startswith("@"):
                         print("Usage: /history @username")
                         continue
-                    
+
                     username = parts[1][1:]  # Remove @
                     users = client.get_online_users()
                     user = next((u for u in users if u["username"] == username), None)
-                    
+
                     if not user:
                         print(f"User {username} not found")
                         continue
-                    
+
                     history = client.get_chat_history(user["id"])
                     if history:
                         print(f"\nChat history with {username}:")
                         for msg in history:
-                            sender = "You" if msg["sender_id"] == client.user_id else username
+                            sender = (
+                                "You"
+                                if msg["sender_id"] == client.user_id
+                                else username
+                            )
                             print(f"[{msg['timestamp']}] {sender}: {msg['content']}")
                     else:
                         print(f"No chat history with {username}")

@@ -87,13 +87,11 @@ def decrypt_aes_gcm(key: bytes, data: bytes, associated_data: bytes = None) -> b
 
 def encrypt(key: bytes, text: str) -> bytes:
     text_enc = text.encode("utf-8")
-    # associated_data = b""     # when needed
-    ct = encrypt_aes_gcm(key, text_enc, nonce=nonce)
+    ct = encrypt_aes_gcm(key, text_enc)
     return ct
 
 
 def decrypt(key: bytes, ct: bytes) -> str:
-    # associated_data = b""     # when needed
     pt = decrypt_aes_gcm(key, ct)
     text = pt.decode("utf-8")
     return text
@@ -107,23 +105,23 @@ def serialize_pub_key(pub_key: DHPublicKey) -> bytes:
     y_hex = hex(public_numbers.y)[2:]  # Remove '0x' prefix
     # Create JSON string
     json_str = json.dumps({"y_hex": y_hex})
-    return json_str.encode('utf-8')
+    return json_str.encode("utf-8")
 
 
 def deserialize_pub_key(serialized_pub: bytes, parameters: DHParameters) -> DHPublicKey:
     """deserializes public key from JSON format with hex string"""
     try:
         # Parse JSON
-        data = json.loads(serialized_pub.decode('utf-8'))
-        if 'y_hex' not in data:
+        data = json.loads(serialized_pub.decode("utf-8"))
+        if "y_hex" not in data:
             raise ValueError("Invalid public key format: missing y_hex")
-        
+
         # Convert hex string to integer
-        y = int(data['y_hex'], 16)
-        
+        y = int(data["y_hex"], 16)
+
         # Create public numbers
         public_numbers = dh.DHPublicNumbers(y, parameters.parameter_numbers())
-        
+
         # Create public key
         return public_numbers.public_key()
     except Exception as e:
@@ -154,14 +152,14 @@ def derive_next_key(current_key: bytes, salt: bytes = None) -> bytes:
     """
     if salt is None:
         salt = os.urandom(32)  # Generate a random salt if not provided
-    
+
     derived_key = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
         info=b"forward_secrecy_rotation",
     ).derive(current_key)
-    
+
     return derived_key, salt
 
 
@@ -177,7 +175,7 @@ def derive_previous_key(current_key: bytes, salt: bytes) -> bytes:
         salt=salt,
         info=b"backward_secrecy_rotation",
     ).derive(current_key)
-    
+
     return derived_key
 
 
@@ -187,10 +185,10 @@ class KeyRotationManager:
         self.key_history = []  # List of (key, salt) tuples
         self.message_counter = 0
         self.ROTATION_THRESHOLD = 100  # Rotate key after 100 messages
-        
+
     def get_current_key(self) -> bytes:
         return self.current_key
-    
+
     def rotate_key(self) -> tuple[bytes, bytes]:
         """
         Rotate the key for forward secrecy.
@@ -201,7 +199,7 @@ class KeyRotationManager:
         self.current_key = new_key
         self.message_counter = 0
         return new_key, salt
-    
+
     def increment_counter(self):
         """
         Increment message counter and rotate key if threshold is reached.
@@ -212,7 +210,7 @@ class KeyRotationManager:
             self.rotate_key()
             return True
         return False
-    
+
     def get_key_for_message(self, message_number: int) -> bytes:
         """
         Get the key that was used for a specific message number.
@@ -220,7 +218,7 @@ class KeyRotationManager:
         """
         if message_number >= len(self.key_history):
             return self.current_key
-        
+
         return self.key_history[message_number][0]
 
 
