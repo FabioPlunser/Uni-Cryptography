@@ -170,6 +170,11 @@ export async function deriveSharedSecret(
 ): Promise<CryptoKey> {
   // Shared secret: (peer_pub_key.y ^ my_priv_key.x) mod p
   const sharedSecretBigInt = power(peerPubKey.y, privKey.x, privKey.params.p);
+
+  const sharedSecretKey = await window.crypto.subtle.importKey(
+    ...
+    sharedSecretBytes.buffer,
+  );
   
   // Derive key using HKDF (same as Python implementation)
   return window.crypto.subtle.deriveKey(
@@ -179,7 +184,7 @@ export async function deriveSharedSecret(
       info: new TextEncoder().encode("handshake data"),
       hash: "SHA-256",
     },
-    importedKey,
+    sharedSecretKey,
     { name: "AES-GCM", length: 256 },
     false, ["encrypt", "decrypt"]
   );
