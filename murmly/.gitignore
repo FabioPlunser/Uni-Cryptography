@@ -1,5 +1,5 @@
 *.pem
-
+.zip
 *.db
 
 # directory for temp pub,priv keys

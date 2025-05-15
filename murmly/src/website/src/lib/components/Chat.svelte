@@ -110,9 +110,9 @@
           Online Users
         </h2>
         {#if onlineUsers.length > 0}
-          <ul class="menu p-0 w-full">
+          <ul class="menu gap-2 p-0 w-full">
             {#each onlineUsers as user (user)}
-              <li>
+              <li class="">
                 <button
                   class="card rounded-sm bg-gray-800 shadow-xml justify-start w-full text-left text-base-content hover:bg-base-300 relative
                   {activeChatUser?.id === user.id

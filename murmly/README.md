@@ -35,6 +35,12 @@ pip install -r requirements.txt
 
 For the web interface: 
 The website is built statically and then served by the FastAPI server.
+- Make sure you have [Bun](https://bun.sh/) installed.
+- Make sure to create a `.env` file in the `src/website` directory with the following content:
+```env
+VITE_API_URL=http://localhost:8000
+```
+
 ```bash
 cd src/website
 bun install 
