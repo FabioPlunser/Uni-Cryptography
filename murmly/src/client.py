@@ -257,7 +257,6 @@ class ChatClient:
                 print("Login after registration failed")
                 return False
 
-        # TODO: here key gen, after fetching parameters from server.
         dh_params_status = self.get_dh_parameters()
         if not dh_params_status:
             print("Failed to get DH parameters")

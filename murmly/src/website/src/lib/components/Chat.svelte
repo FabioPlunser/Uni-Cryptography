@@ -62,7 +62,7 @@
 
   async function selectUser(selectedUser: onlineUser) {
     chatStore.setActiveChatUser(selectedUser);
-    // await chatStore.fetchChatHistory(authStore.current.token, selectedUser);
+    await chatStore.fetchChatHistory(authStore.current.token, selectedUser);
   }
 
   // Auto-scroll to bottom of messages
