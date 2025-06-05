@@ -1,8 +1,9 @@
 import json
+import random
 from Crypto.Hash import SHA256
-from Crypto.Util.number import bytes_to_long
+from Crypto.Util.number import bytes_to_long, long_to_bytes
 from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
+from Crypto.Util.Padding import pad, unpad
 from dsa import DSA
 
 dsa = DSA()
@@ -33,35 +34,13 @@ with open("private_key.txt", "r") as file:
 q = public_key["q"]
 p = public_key["p"]
 g = public_key["g"]
+y = public_key["y"]
 
 r1, s1 = cert1["r"], cert1["s"]
 r2, s2 = cert2["r"], cert2["s"]
 
 m1 = {"name": cert1["name"], "website": cert1["website"], "expdate": cert1["expdate"]}
 m2 = {"name": cert2["name"], "website": cert2["website"], "expdate": cert2["expdate"]}
-
-print("m1:", m1)
-
-message1 = json.dumps(m1).encode()
-message2 = json.dumps(m2).encode()
-
-hashMessage1 = SHA256.new(message1).digest()
-hashMessage2 = SHA256.new(message2).digest()
-
-hm1 = bytes_to_long(hashMessage1)
-hm2 = bytes_to_long(hashMessage2)
-
-u1 = 1
-u2 = 1
-
-# We know IV
-IV = b"this_is_the_iv02"
-
-
-def decrypt_hash(hash_value):
-    cipher = AES.new(IV, AES.MODE_ECB)
-    decrypted = cipher.decrypt(hash_value)
-    return decrypted
 
 
 def custom_hash(message):
@@ -74,4 +53,80 @@ def custom_hash(message):
     return hash
 
 
-# dsa.verify(m1, (r1, s1), custom_hash)
+verified = False
+forged_message = None
+attempts = 0
+while forged_message is None:
+    r_new = 0
+    s_new = 0
+    u1 = 0
+    u2 = 0
+    attempts += 1
+
+    # print("=" * 60)
+    # print("Attempting to forge a new signature...")
+    while r_new == 0 or s_new == 0:
+        u1 = random.randint(1, q - 1)
+        u2 = random.randint(1, q - 1)
+
+        term1 = pow(g, u1, p)
+        term2 = pow(y, u2, p)
+        r_new = (term1 * term2 % p) % q
+
+        if r_new == 0:
+            continue
+
+        s_new = (r_new * pow(u2, -1, q)) % q
+
+    # print(f"Forged r: {r_new}")
+    # print(f"Forged s: {s_new}")
+
+    target_hash = (u1 * s_new) % q
+    # print(f"Target H(m) as integer: {target_hash}")
+    target_hash_bytes = long_to_bytes(target_hash, AES.block_size)
+
+    IV = b"this_is_the_iv02"
+    cipher_new = AES.new(IV, AES.MODE_ECB).decrypt(target_hash_bytes)
+
+    try:
+        forged_message = unpad(cipher_new, AES.block_size)
+    except ValueError:
+        continue
+        # print("Decryption failed, padding is incorrect.")
+
+    # print("=" * 60)
+
+print("=" * 60)
+print("Forged message successfully created!")
+print(f"Took {attempts} attempts to forge a aes padded valid signature.")
+print(f"Forged message: {forged_message.hex()}")
+forged_cert_dict = {
+    "name": forged_message.hex(),
+    "website": "",
+    "expdate": "",
+}
+
+forged_cert_with_sig = {
+    **forged_cert_dict,  # Spread the content
+    "r": r_new,
+    "s": s_new,
+}
+
+with open("forged_certificate.txt", "w") as f:
+    json.dump(forged_cert_with_sig, f, indent=4)
+
+signature = (r_new, s_new)
+
+dsa.y = y
+dsa.p = p
+dsa.q = q
+dsa.g = g
+
+verified = dsa.verify(
+    forged_cert_dict,
+    signature,
+    custom_hash,
+)
+
+print(f"Verification result: {verified}")
+print("=" * 60)
