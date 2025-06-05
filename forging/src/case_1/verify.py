@@ -1,6 +1,6 @@
 import json
 from Crypto.Hash import SHA256
-from Crypto.Util.number import getPrime, GCD, bytes_to_long, isPrime
+from Crypto.Util.number import bytes_to_long
 
 cert1 = None
 cert2 = None
