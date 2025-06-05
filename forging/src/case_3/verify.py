@@ -97,7 +97,7 @@ while forged_message is None:
 
 print("=" * 60)
 print("Forged message successfully created!")
-print(f"Took {attempts} attempts to forge a aes padded valid signature.")
+print(f"Took {attempts} attempts to forge a aes padded valid message.")
 print(f"Forged message: {forged_message.hex()}")
 forged_cert_dict = {
     "name": forged_message.hex(),
