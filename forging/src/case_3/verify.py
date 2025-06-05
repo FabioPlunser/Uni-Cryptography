@@ -6,9 +6,6 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from dsa import DSA
 
-dsa = DSA()
-
-
 cert1 = None
 cert2 = None
 public_key = None
@@ -69,6 +66,7 @@ while forged_message is None:
         u1 = random.randint(1, q - 1)
         u2 = random.randint(1, q - 1)
 
+        # (g^u1 * y^u2 mod p) mod q
         term1 = pow(g, u1, p)
         term2 = pow(y, u2, p)
         r_new = (term1 * term2 % p) % q
@@ -76,6 +74,7 @@ while forged_message is None:
         if r_new == 0:
             continue
 
+        # r * u2^-1 mod q
         s_new = (r_new * pow(u2, -1, q)) % q
 
     # print(f"Forged r: {r_new}")
@@ -107,7 +106,7 @@ forged_cert_dict = {
 }
 
 forged_cert_with_sig = {
-    **forged_cert_dict,  # Spread the content
+    **forged_cert_dict,
     "r": r_new,
     "s": s_new,
 }
@@ -115,12 +114,15 @@ forged_cert_with_sig = {
 with open("forged_certificate.txt", "w") as f:
     json.dump(forged_cert_with_sig, f, indent=4)
 
-signature = (r_new, s_new)
-
+# ------------------------------------------------------------------------------
+# Verifying the forged certificate
+dsa = DSA()
 dsa.y = y
 dsa.p = p
 dsa.q = q
 dsa.g = g
+
+signature = (r_new, s_new)
 
 verified = dsa.verify(
     forged_cert_dict,
