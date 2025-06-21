@@ -19,38 +19,38 @@ We will refer to this common value as $r$. This is confirmed in the code with th
 
 
 The equations for $s_1$ and $s_2$ are:<br/>
-\[
+$
 s_i = \frac{1}{k}(H(m_i) + x_a r) \pmod q
-\]
-\[
+$
+$
 \Leftrightarrow  k = \frac{H(m_i) + x_a \cdot r}{s_i} \pmod q
-\]
+$
 
 Setting $k = k$:
-\[
+$
 0 = k - k = \frac{H(m_1) + x_a r}{s_1} - \frac{H(m_2) + x_a r}{s_2} \pmod q
-\]
+$
 
 Multiplying through by $s_1 s_2$:
-\[
+$
 0 = s_2(H(m_1) + x_a r) - s_1(H(m_2) + x_a r) \pmod q
-\]
-\[
+$
+$
 0 = s_2 H(m_1) + x_a r s_2 - s_1 H(m_2) - x_a r s_1 \pmod q
-\]
+$
 
-\[
+$
 0 = s_2 H(m_1) - s_1 H(m_2) + x_a r(s_2 - s_1) \pmod q
-\]
+$
 
 Rearranging:
-\[
+$
 x_a r(s_1 - s_2) = s_2 H(m_1) - s_1 H(m_2) \pmod q
-\]
+$
 
-\[
+$
 x_a = \frac{s_2 H(m_1) - s_1 H(m_2)}{r(s_1 - s_2)} \pmod q
-\]
+$
 
 
 This formula corresponds to the Python code:<br/>
@@ -66,47 +66,47 @@ This allows us to exploit the relationship between the two nonces to derive the 
 
 
 The formula for the new nonce 
-\[
+$
     k_2 = 3k_1 + 5 \pmod q
     \Leftrightarrow k_1 = \frac{k_2-5 } {3} \pmod{q}
-\]
+$
 
 Here the rationale for the attack is similar to case 1. 
 From $s₁ = k_1^{-1}(H(m_1) + x_a r_1) \pmod q$, we get:
-\[
+$
 k_1 = (H(m_1) + x_a r_1)/s_1 \pmod q
-\]
+$
 Therefore:
-\[
+$
 \frac{k_2 - 5}{3} = \frac{H(m_1) + x_a r_1}{s_1} \pmod{q}
-\]
+$
 
 <!-- We denote all the variables the same as in case 1, except the key, as we have two different keys $k, k'$ here. -->
 Given the deterministic relationship $k_2 = 3k_1 + 5$, we can eliminate the unknown nonces and solve for x_a:
 
-\[
+$
 \frac{1}{3}\left(s_2^{-1}(H(m_2) + x_a r_2) - 5\right) - (H(m_1) + x_a r_1)s_1^{-1} \pmod q = 0
-\]
+$
 
-\[
+$
 \frac{(H(m_2) + x_a r_2) - 5s_2}{3s_2} - \frac{H(m_1) + x_a r_1}{s_1} \pmod q = 0
-\]
+$
 
-\[
+$
 \frac{((H(m_2) + x_a r_2) - 5s_2)s_1 - 3s_2(H(m_1) + x_a r_1)}{3s_2 s_1} \pmod q= 0
-\]
+$
 
-\[
+$
 H(m_2)s_1 + x_a r_2 s_1 - 5s_2 s_1 - 3s_2 H(m_1) - 3s_2 x_a r_1 \pmod q = 0
-\]
+$
 
-\[
+$
 \frac{H(m_2)s_1 - 5s_2 s_1 - 3s_2 H(m_1)}{3s_2 r_1 - r_2 s_1} \pmod q = x_a
-\]
+$
 
-\[
+$
 x_a = \frac{s_1 H(m_2) - 5s_2 s_1 - 3s_2 H(m_1)}{3s_2 r_1 - r_2 s_1} \pmod q
-\]
+$
 
 
 This corresponds to the private key that can therefore be used to forge a certificate for the public key.
@@ -124,12 +124,12 @@ This attack exploits the reversible hash function implementation. Instead of bre
 Our approach is to guess randomly generate $u_1, u_2$. 
 Then we calculate:
 
-\[
+$
 r' = (g^{u_1} y^{u_2} \pmod p) \pmod q
-\]
-\[
+$
+$
 s' = (r' \cdot u_2^{-1}) \pmod q
-\]
+$
 
 Using those values and the known `IV` we compute the new `target_hash` 
 $\text{targethash} = (u_1 \cdot s') \pmod q$
@@ -176,8 +176,11 @@ while forged_message is None:
 
 ```
 
+# Optional 
+The optional part of the project is to implement a solution that is not susceptible to the attacks described above. 
 
-
+Because Case 3 has already solved the nonce issue by using random nonces but with a problematic hash function, we took the 
+code from Case 3 and changed the hash function to SHA256.
 
 
 
